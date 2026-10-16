@@ -1,0 +1,8 @@
+{
+  "name": "Remix NEXOVIRA",
+  "description": "Nexovira brings technology, digital services, learning, commerce and intelligent experiences together in one evolving ecosystem.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

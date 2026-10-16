@@ -1,0 +1,1085 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User account profile and RBAC data for Nexovira ecosystem members",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Unique immutable authentication ID"
+        },
+        "fullName": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Full name of the member"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 150,
+          "description": "Account email address"
+        },
+        "phoneNumber": {
+          "type": "string",
+          "maxLength": 25,
+          "description": "Optional phone contact"
+        },
+        "photoURL": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Avatar image URL or identifier"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["CUSTOMER", "SELLER", "EXPERT", "STAFF", "ADMIN", "SUPER_ADMIN"],
+          "description": "Ecosystem security role"
+        },
+        "accountStatus": {
+          "type": "string",
+          "enum": ["ACTIVE", "SUSPENDED", "DISABLED"],
+          "description": "Account status"
+        },
+        "emailVerified": {
+          "type": "boolean",
+          "description": "Email verification flag"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last updated timestamp"
+        }
+      },
+      "required": ["userId", "fullName", "email", "role", "accountStatus", "createdAt", "updatedAt"]
+    },
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Trusted administrative authority registry",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Admin UID"
+        },
+        "email": {
+          "type": "string",
+          "description": "Admin email"
+        },
+        "assignedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Assignment timestamp"
+        }
+      },
+      "required": ["userId", "email"]
+    },
+    "SellerApplication": {
+      "title": "SellerApplication",
+      "description": "Application submitted by a customer to become an authorized merchant",
+      "type": "object",
+      "properties": {
+        "applicationId": {
+          "type": "string",
+          "description": "Unique application ID (matches applicant userId)"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Applicant user UID"
+        },
+        "fullName": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Applicant full legal name"
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 150,
+          "description": "Applicant contact email"
+        },
+        "phoneNumber": {
+          "type": "string",
+          "maxLength": 25,
+          "description": "Applicant contact phone"
+        },
+        "businessName": {
+          "type": "string",
+          "maxLength": 150,
+          "description": "Trading enterprise or company name"
+        },
+        "businessDescription": {
+          "type": "string",
+          "maxLength": 1000,
+          "description": "Summary of business operations"
+        },
+        "businessType": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Registered company, sole proprietorship, or partnership"
+        },
+        "businessAddress": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Physical operating address"
+        },
+        "city": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "Operating city"
+        },
+        "state": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "Operating state or region"
+        },
+        "country": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "Country of registration"
+        },
+        "productCategories": {
+          "type": "array",
+          "description": "Intended marketplace categories"
+        },
+        "productsSummary": {
+          "type": "string",
+          "maxLength": 1000,
+          "description": "Description of products intended for sale"
+        },
+        "websiteUrl": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "Optional website or catalog link"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["PENDING_REVIEW", "VERIFIED", "REJECTED", "SUSPENDED"],
+          "description": "Backend-controlled application status"
+        },
+        "submittedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Submission timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update timestamp"
+        },
+        "reviewedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Management decision timestamp"
+        },
+        "reviewNotes": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Internal administrative feedback"
+        }
+      },
+      "required": ["applicationId", "userId", "fullName", "email", "businessName", "businessDescription", "status", "submittedAt", "updatedAt"]
+    },
+    "SellerProfile": {
+      "title": "SellerProfile",
+      "description": "Authorized merchant profile, storefront branding, and verification status",
+      "type": "object",
+      "properties": {
+        "sellerId": {
+          "type": "string",
+          "description": "Immutable unique seller ID (typically seller-{userId})"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Associated user account UID"
+        },
+        "businessName": {
+          "type": "string",
+          "maxLength": 150,
+          "description": "Public store name"
+        },
+        "slug": {
+          "type": "string",
+          "maxLength": 160,
+          "description": "Public storefront URL slug"
+        },
+        "businessDescription": {
+          "type": "string",
+          "maxLength": 2000,
+          "description": "Detailed storefront description"
+        },
+        "logoUrl": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Brand logo asset URL"
+        },
+        "coverImageUrl": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Storefront banner header asset URL"
+        },
+        "businessLocation": {
+          "type": "string",
+          "maxLength": 120,
+          "description": "Public operating location (City, Country)"
+        },
+        "contactEmail": {
+          "type": "string",
+          "maxLength": 150,
+          "description": "Public merchant inquiry email"
+        },
+        "contactPhone": {
+          "type": "string",
+          "maxLength": 25,
+          "description": "Public merchant customer support line"
+        },
+        "categories": {
+          "type": "array",
+          "description": "Categories sold by merchant"
+        },
+        "verificationStatus": {
+          "type": "string",
+          "enum": ["NOT_SELLER", "APPLICATION_STARTED", "PENDING_REVIEW", "VERIFIED", "REJECTED", "SUSPENDED"],
+          "description": "Backend-controlled merchant authorization status"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Update timestamp"
+        }
+      },
+      "required": ["sellerId", "userId", "businessName", "slug", "verificationStatus", "createdAt", "updatedAt"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Marketplace physical hardware, electronics, or appliance product record",
+      "type": "object",
+      "properties": {
+        "productId": {
+          "type": "string",
+          "description": "Immutable unique product ID"
+        },
+        "sellerId": {
+          "type": "string",
+          "description": "Verified seller user ID owner"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Commercial product title"
+        },
+        "slug": {
+          "type": "string",
+          "maxLength": 220,
+          "description": "SEO-friendly canonical URL slug"
+        },
+        "shortDescription": {
+          "type": "string",
+          "maxLength": 400,
+          "description": "Brief headline overview"
+        },
+        "fullDescription": {
+          "type": "string",
+          "maxLength": 4000,
+          "description": "Exhaustive product details and features"
+        },
+        "category": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Primary category classification"
+        },
+        "subcategory": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Secondary subcategory grouping"
+        },
+        "brand": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Manufacturer or brand label"
+        },
+        "sku": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "Stock keeping unit identifier"
+        },
+        "price": {
+          "type": "number",
+          "description": "Base price numerical amount"
+        },
+        "currency": {
+          "type": "string",
+          "maxLength": 10,
+          "description": "ISO currency code (e.g. NGN, USD)"
+        },
+        "discountPrice": {
+          "type": "number",
+          "description": "Optional promotional discounted amount"
+        },
+        "stockQuantity": {
+          "type": "number",
+          "description": "Inventory units available"
+        },
+        "availabilityStatus": {
+          "type": "string",
+          "enum": ["IN_STOCK", "LOW_STOCK", "OUT_OF_STOCK", "UNAVAILABLE"],
+          "description": "Product availability state"
+        },
+        "productStatus": {
+          "type": "string",
+          "enum": ["DRAFT", "PENDING_REVIEW", "PUBLISHED", "REJECTED", "OUT_OF_STOCK", "ARCHIVED"],
+          "description": "Publishing lifecycle status"
+        },
+        "productImages": {
+          "type": "array",
+          "description": "Ordered product photography image assets"
+        },
+        "specifications": {
+          "type": "array",
+          "description": "Technical specifications key-value list"
+        },
+        "variants": {
+          "type": "array",
+          "description": "Optional SKU product variants (colors, capacity, etc.)"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Update timestamp"
+        },
+        "publishedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Publish timestamp"
+        }
+      },
+      "required": ["productId", "sellerId", "name", "slug", "category", "brand", "price", "currency", "stockQuantity", "availabilityStatus", "productStatus", "createdAt", "updatedAt"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Marketplace category hierarchy item",
+      "type": "object",
+      "properties": {
+        "categoryId": {
+          "type": "string",
+          "description": "Category ID"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Display name"
+        },
+        "slug": {
+          "type": "string",
+          "maxLength": 120,
+          "description": "URL slug"
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "Category scope summary"
+        },
+        "order": {
+          "type": "number",
+          "description": "Display sort order"
+        }
+      },
+      "required": ["categoryId", "name", "slug", "order"]
+    },
+    "CartItem": {
+      "title": "CartItem",
+      "description": "Item in member shopping cart",
+      "type": "object",
+      "properties": {
+        "itemId": {
+          "type": "string",
+          "description": "Cart line item ID"
+        },
+        "productId": {
+          "type": "string",
+          "description": "Target product ID"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Product name snapshot"
+        },
+        "slug": {
+          "type": "string",
+          "description": "Product slug"
+        },
+        "brand": {
+          "type": "string",
+          "description": "Brand"
+        },
+        "price": {
+          "type": "number",
+          "description": "Unit price numerical snapshot"
+        },
+        "currency": {
+          "type": "string",
+          "description": "Currency code"
+        },
+        "image": {
+          "type": "string",
+          "description": "Primary product image URL"
+        },
+        "quantity": {
+          "type": "number",
+          "description": "Requested quantity"
+        },
+        "variantId": {
+          "type": "string",
+          "description": "Selected variant ID if applicable"
+        },
+        "addedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Time item was added"
+        }
+      },
+      "required": ["itemId", "productId", "name", "price", "currency", "quantity"]
+    },
+    "WishlistItem": {
+      "title": "WishlistItem",
+      "description": "User saved product reference",
+      "type": "object",
+      "properties": {
+        "productId": {
+          "type": "string",
+          "description": "Saved product ID"
+        },
+        "addedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Time item was saved"
+        }
+      },
+      "required": ["productId", "addedAt"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Customer commerce order record preserving verified transactions and historical price snapshots",
+      "type": "object",
+      "properties": {
+        "orderId": { "type": "string", "description": "Unique immutable order ID" },
+        "customerId": { "type": "string", "description": "Authenticated user UID of customer" },
+        "customerEmail": { "type": "string", "format": "email", "description": "Customer contact email" },
+        "orderReference": { "type": "string", "description": "Human-readable order tracking reference" },
+        "currency": { "type": "string", "description": "Transaction currency code (e.g. NGN)" },
+        "subtotal": { "type": "number", "description": "Server-calculated subtotal" },
+        "deliveryFee": { "type": "number", "description": "Calculated delivery fee" },
+        "discount": { "type": "number", "description": "Applied discount" },
+        "total": { "type": "number", "description": "Final paid amount" },
+        "paymentStatus": {
+          "type": "string",
+          "enum": ["PENDING", "SUCCESS", "FAILED", "CANCELLED", "REFUNDED", "PARTIALLY_REFUNDED"],
+          "description": "Payment authorization status"
+        },
+        "orderStatus": {
+          "type": "string",
+          "enum": ["PENDING_PAYMENT", "PAYMENT_CONFIRMED", "PROCESSING", "READY_FOR_FULFILLMENT", "SHIPPED", "DELIVERED", "CANCELLED", "REFUNDED"],
+          "description": "Order fulfillment lifecycle status"
+        },
+        "paymentId": { "type": "string", "description": "Associated payment record ID" },
+        "paymentReference": { "type": "string", "description": "Payment provider transaction reference" },
+        "paymentProvider": { "type": "string", "description": "Payment processor (e.g. PAYSTACK)" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Update timestamp" }
+      },
+      "required": ["orderId", "customerId", "orderReference", "currency", "subtotal", "total", "paymentStatus", "orderStatus", "createdAt", "updatedAt"]
+    },
+    "OrderItem": {
+      "title": "OrderItem",
+      "description": "Individual line item in an order preserving historical price and product snapshots",
+      "type": "object",
+      "properties": {
+        "orderItemId": { "type": "string", "description": "Unique item ID" },
+        "orderId": { "type": "string", "description": "Parent order ID" },
+        "customerId": { "type": "string", "description": "Purchaser customer UID" },
+        "productId": { "type": "string", "description": "Catalog product ID" },
+        "sellerId": { "type": "string", "description": "Merchant seller ID" },
+        "productNameSnapshot": { "type": "string", "description": "Product name at purchase" },
+        "skuSnapshot": { "type": "string", "description": "SKU at purchase" },
+        "imageSnapshot": { "type": "string", "description": "Thumbnail URL at purchase" },
+        "unitPrice": { "type": "number", "description": "Permanent numerical purchased unit price" },
+        "quantity": { "type": "number", "description": "Units purchased" },
+        "currency": { "type": "string", "description": "Currency code" },
+        "itemTotal": { "type": "number", "description": "Total for this line item" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+      },
+      "required": ["orderItemId", "orderId", "customerId", "productId", "sellerId", "unitPrice", "quantity", "currency", "itemTotal"]
+    },
+    "PaymentRecord": {
+      "title": "PaymentRecord",
+      "description": "Secure payment transaction ledger",
+      "type": "object",
+      "properties": {
+        "paymentId": { "type": "string", "description": "Unique payment record ID" },
+        "orderId": { "type": "string", "description": "Associated order ID" },
+        "userId": { "type": "string", "description": "Payer UID" },
+        "provider": { "type": "string", "description": "Payment processor name" },
+        "providerTransactionReference": { "type": "string", "description": "Provider reference" },
+        "amount": { "type": "number", "description": "Transaction amount in base units" },
+        "currency": { "type": "string", "description": "Currency code" },
+        "status": {
+          "type": "string",
+          "enum": ["PENDING", "SUCCESS", "FAILED", "CANCELLED", "REFUNDED", "PARTIALLY_REFUNDED"],
+          "description": "Transaction status"
+        },
+        "environment": { "type": "string", "enum": ["test", "live"], "description": "Gateway environment" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Update timestamp" }
+      },
+      "required": ["paymentId", "orderId", "userId", "provider", "providerTransactionReference", "amount", "currency", "status"]
+    },
+    "ServiceCategory": {
+      "title": "ServiceCategory",
+      "description": "Tech and digital services professional category classification",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique category identifier" },
+        "name": { "type": "string", "maxLength": 100, "description": "Category display title" },
+        "slug": { "type": "string", "maxLength": 120, "description": "URL slug" },
+        "description": { "type": "string", "maxLength": 500, "description": "Category capability overview" },
+        "icon": { "type": "string", "maxLength": 50, "description": "Visual icon key" },
+        "isActive": { "type": "boolean", "description": "Public visibility flag" },
+        "displayOrder": { "type": "number", "description": "Sorting priority order" },
+        "skills": { "type": "array", "description": "Associated typical professional skill keywords" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Update timestamp" }
+      },
+      "required": ["id", "name", "slug", "description", "isActive", "displayOrder", "createdAt", "updatedAt"]
+    },
+    "ExpertProfile": {
+      "title": "ExpertProfile",
+      "description": "Verified tech and digital professional profile under Nexovira ecosystem",
+      "type": "object",
+      "properties": {
+        "expertId": { "type": "string", "description": "Unique immutable expert identifier" },
+        "userId": { "type": "string", "description": "Authenticated user UID" },
+        "fullName": { "type": "string", "maxLength": 100, "description": "Professional full name" },
+        "professionalTitle": { "type": "string", "maxLength": 150, "description": "Primary job title" },
+        "profileImage": { "type": "string", "maxLength": 500, "description": "Avatar photograph asset URL" },
+        "bio": { "type": "string", "maxLength": 2000, "description": "Professional background and experience" },
+        "skills": { "type": "array", "description": "List of validated technical competencies" },
+        "serviceCategories": { "type": "array", "description": "List of categorized service specialties" },
+        "yearsOfExperience": { "type": "number", "description": "Years of commercial industry experience" },
+        "portfolioLinks": { "type": "array", "description": "Verified external portfolio case studies" },
+        "location": { "type": "string", "maxLength": 100, "description": "Operating region or country" },
+        "languages": { "type": "array", "description": "Spoken communication languages" },
+        "availabilityStatus": { "type": "string", "enum": ["AVAILABLE", "LIMITED", "UNAVAILABLE"], "description": "Current contracting availability" },
+        "profileVisibility": { "type": "string", "enum": ["PUBLIC", "HIDDEN"], "description": "Directory listing status" },
+        "verificationStatus": { "type": "string", "enum": ["PENDING", "VERIFIED", "REJECTED", "SUSPENDED"], "description": "Administrative vetting status" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Update timestamp" }
+      },
+      "required": ["expertId", "userId", "fullName", "professionalTitle", "bio", "availabilityStatus", "profileVisibility", "verificationStatus", "createdAt", "updatedAt"]
+    },
+    "ProjectRequest": {
+      "title": "ProjectRequest",
+      "description": "Managed service engagement request initiated by customer",
+      "type": "object",
+      "properties": {
+        "requestId": { "type": "string", "description": "Unique request identifier" },
+        "requestReference": { "type": "string", "maxLength": 50, "description": "Human-readable engagement reference" },
+        "customerId": { "type": "string", "description": "Authenticated client UID" },
+        "customerName": { "type": "string", "maxLength": 100, "description": "Customer contact name" },
+        "customerEmail": { "type": "string", "format": "email", "maxLength": 150, "description": "Customer contact email" },
+        "categoryId": { "type": "string", "description": "Target service category ID" },
+        "categoryName": { "type": "string", "maxLength": 100, "description": "Service category title" },
+        "categorySlug": { "type": "string", "maxLength": 120, "description": "Service category slug" },
+        "projectTitle": { "type": "string", "maxLength": 200, "description": "Engagement headline" },
+        "description": { "type": "string", "maxLength": 5000, "description": "Detailed project brief" },
+        "goals": { "type": "string", "maxLength": 2000, "description": "Anticipated project outcomes" },
+        "requiredSkills": { "type": "array", "description": "Requested technical capabilities" },
+        "budgetMin": { "type": "number", "description": "Minimum budget amount" },
+        "budgetMax": { "type": "number", "description": "Maximum budget amount" },
+        "currency": { "type": "string", "maxLength": 10, "description": "ISO currency code" },
+        "preferredTimeline": { "type": "string", "maxLength": 50, "description": "Desired delivery timeline" },
+        "priority": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH", "URGENT"], "description": "Project urgency priority" },
+        "attachments": { "type": "array", "description": "Attached documentation and briefs" },
+        "status": {
+          "type": "string",
+          "enum": ["SUBMITTED", "UNDER_REVIEW", "NEEDS_INFORMATION", "ASSIGNED", "ACCEPTED", "IN_PROGRESS", "AWAITING_CUSTOMER", "COMPLETED", "CANCELLED", "REJECTED"],
+          "description": "Managed workflow lifecycle status"
+        },
+        "assignedExpertId": { "type": "string", "description": "Assigned professional UID or expert ID" },
+        "assignedExpertName": { "type": "string", "maxLength": 100, "description": "Assigned expert full name" },
+        "createdBy": { "type": "string", "description": "Creator user UID" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Update timestamp" }
+      },
+      "required": ["requestId", "requestReference", "customerId", "categoryId", "projectTitle", "description", "goals", "budgetMin", "budgetMax", "currency", "status", "createdAt", "updatedAt"]
+    },
+    "ProjectUpdate": {
+      "title": "ProjectUpdate",
+      "description": "Project communication milestone or message between customer, expert, and management",
+      "type": "object",
+      "properties": {
+        "updateId": { "type": "string", "description": "Unique update identifier" },
+        "requestId": { "type": "string", "description": "Parent project request identifier" },
+        "senderId": { "type": "string", "description": "Sender UID or system identifier" },
+        "senderName": { "type": "string", "maxLength": 100, "description": "Sender display name" },
+        "senderRole": { "type": "string", "enum": ["CUSTOMER", "EXPERT", "MANAGEMENT"], "description": "Sender operational role" },
+        "message": { "type": "string", "maxLength": 5000, "description": "Communication content" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+      },
+      "required": ["updateId", "requestId", "senderId", "senderName", "senderRole", "message", "createdAt"]
+    },
+    "ExpertApplication": {
+      "title": "ExpertApplication",
+      "description": "Professional vetting application submitted by user to join expert ecosystem",
+      "type": "object",
+      "properties": {
+        "applicationId": { "type": "string", "description": "Application record ID" },
+        "userId": { "type": "string", "description": "Applicant user UID" },
+        "fullName": { "type": "string", "maxLength": 100, "description": "Applicant full name" },
+        "email": { "type": "string", "format": "email", "maxLength": 150, "description": "Applicant contact email" },
+        "professionalTitle": { "type": "string", "maxLength": 150, "description": "Professional trade title" },
+        "bio": { "type": "string", "maxLength": 2000, "description": "Professional biography" },
+        "skills": { "type": "array", "description": "Technical skills" },
+        "serviceCategories": { "type": "array", "description": "Intended service categories" },
+        "yearsOfExperience": { "type": "number", "description": "Commercial experience in years" },
+        "portfolioLinks": { "type": "array", "description": "Sample work links" },
+        "location": { "type": "string", "maxLength": 100, "description": "Geographical location" },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Administrative audit trail recording operational and governance actions",
+      "type": "object",
+      "properties": {
+        "logId": { "type": "string", "description": "Unique log record ID" },
+        "actorId": { "type": "string", "description": "Authenticated user UID who performed action" },
+        "actorEmail": { "type": "string", "description": "Actor email address" },
+        "action": { "type": "string", "description": "Operational event (e.g. EXPERT_VERIFIED, PROJECT_ASSIGNED)" },
+        "entityType": { "type": "string", "description": "Target entity collection (EXPERT, REQUEST, CATEGORY)" },
+        "entityId": { "type": "string", "description": "Target record ID" },
+        "previousState": { "type": "string", "description": "Previous state summary" },
+        "newState": { "type": "string", "description": "New state summary" },
+        "metadata": { "type": "string", "description": "Additional operational metadata" },
+        "timestamp": { "type": "string", "format": "date-time", "description": "Action timestamp" }
+      },
+      "required": ["logId", "actorId", "action", "entityType", "entityId", "timestamp"]
+    },
+    "NotificationEvent": {
+      "title": "NotificationEvent",
+      "description": "Lifecycle notification events dispatched for project milestones",
+      "type": "object",
+      "properties": {
+        "eventId": { "type": "string", "description": "Unique event identifier" },
+        "eventType": { "type": "string", "description": "Event classification code" },
+        "recipient": { "type": "string", "description": "Recipient email or identifier" },
+        "recipientRole": { "type": "string", "enum": ["MANAGEMENT", "CUSTOMER", "EXPERT"], "description": "Recipient stakeholder role" },
+        "referenceId": { "type": "string", "description": "Target project or application reference" },
+        "title": { "type": "string", "description": "Notification subject" },
+        "message": { "type": "string", "description": "Notification body" },
+        "status": { "type": "string", "enum": ["RECORDED", "DISPATCHED"], "description": "Delivery status" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Event timestamp" }
+      },
+      "required": ["eventId", "eventType", "recipient", "recipientRole", "referenceId", "title", "message", "status", "createdAt"]
+    },
+    "NotificationRecord": {
+      "title": "NotificationRecord",
+      "description": "Unified in-app notification entity across Nexovira ecosystem",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique notification ID" },
+        "recipientUserId": { "type": "string", "description": "Recipient member ID" },
+        "type": { "type": "string", "description": "Specific notification classification code" },
+        "category": { "type": "string", "description": "High-level domain category" },
+        "title": { "type": "string", "description": "Notification title" },
+        "message": { "type": "string", "description": "Notification message content" },
+        "relatedEntityType": { "type": "string", "description": "Associated entity model name" },
+        "relatedEntityId": { "type": "string", "description": "Associated entity identifier" },
+        "actionUrl": { "type": "string", "description": "Safe internal deep link" },
+        "channels": { "type": "array", "items": { "type": "string" }, "description": "Target delivery channels" },
+        "priority": { "type": "string", "enum": ["LOW", "NORMAL", "HIGH", "CRITICAL"], "description": "Urgency rating" },
+        "status": { "type": "string", "enum": ["PENDING", "DELIVERED", "FAILED", "SKIPPED_NO_PROVIDER"], "description": "Delivery status" },
+        "readStatus": { "type": "string", "enum": ["UNREAD", "READ"], "description": "Member read status" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "readAt": { "type": "string", "format": "date-time", "description": "Read timestamp" }
+      },
+      "required": ["id", "recipientUserId", "type", "category", "title", "message", "priority", "status", "readStatus", "createdAt"]
+    },
+    "UserNotificationPreferences": {
+      "title": "UserNotificationPreferences",
+      "description": "User notification channel delivery preferences",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "User identifier" },
+        "inAppOrders": { "type": "boolean" },
+        "inAppPayments": { "type": "boolean" },
+        "inAppAcademy": { "type": "boolean" },
+        "inAppServices": { "type": "boolean" },
+        "inAppAffiliate": { "type": "boolean" },
+        "inAppMarketing": { "type": "boolean" },
+        "emailOrders": { "type": "boolean" },
+        "emailPayments": { "type": "boolean" },
+        "emailAcademy": { "type": "boolean" },
+        "emailServices": { "type": "boolean" },
+        "emailAffiliate": { "type": "boolean" },
+        "emailMarketing": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "updatedAt"]
+    },
+    "Review": {
+      "title": "Review",
+      "description": "Verified user review and star rating for ecosystem entities",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Review unique identifier" },
+        "userId": { "type": "string", "description": "Author user ID" },
+        "userDisplayName": { "type": "string", "description": "Display name of reviewer" },
+        "userAvatar": { "type": "string", "description": "Optional reviewer avatar" },
+        "isAnonymous": { "type": "boolean", "description": "Whether reviewer name is obscured" },
+        "entityType": { "type": "string", "enum": ["PRODUCT", "SERVICE", "EXPERT", "COURSE"], "description": "Target entity category" },
+        "entityId": { "type": "string", "description": "Target entity ID" },
+        "entityTitle": { "type": "string", "description": "Entity display title snapshot" },
+        "rating": { "type": "integer", "minimum": 1, "maximum": 5, "description": "Star rating integer" },
+        "title": { "type": "string", "maxLength": 100, "description": "Review headline" },
+        "body": { "type": "string", "minLength": 10, "maxLength": 2000, "description": "Review body text" },
+        "status": { "type": "string", "enum": ["PUBLISHED", "PENDING", "UNDER_REVIEW", "HIDDEN", "REPORTED", "REMOVED"], "description": "Moderation status" },
+        "verificationType": { "type": "string", "enum": ["VERIFIED_PURCHASE", "VERIFIED_SERVICE", "VERIFIED_EXPERIENCE", "VERIFIED_ENROLLMENT", "NONE"], "description": "Server-derived verification badge" },
+        "verificationReference": { "type": "string", "description": "Reference ID to order or project" },
+        "sellerId": { "type": "string", "description": "Associated merchant if product review" },
+        "expertId": { "type": "string", "description": "Associated expert if specialist review" },
+        "reportCount": { "type": "integer", "description": "Total user reports received" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Submission timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last modified timestamp" }
+      },
+      "required": ["id", "userId", "entityType", "entityId", "rating", "body", "status", "verificationType", "createdAt", "updatedAt"]
+    },
+    "ReviewReport": {
+      "title": "ReviewReport",
+      "description": "User report against inappropriate or policy-violating review",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Report ID" },
+        "reviewId": { "type": "string", "description": "Target review ID" },
+        "reporterId": { "type": "string", "description": "Reporting user ID" },
+        "reporterEmail": { "type": "string", "description": "Reporting user email" },
+        "reason": { "type": "string", "enum": ["SPAM", "OFFENSIVE", "HARASSMENT", "FRAUDULENT", "PERSONAL_INFO", "IRRELEVANT", "OTHER"], "description": "Report classification" },
+        "explanation": { "type": "string", "maxLength": 500, "description": "User explanation" },
+        "status": { "type": "string", "enum": ["PENDING", "RESOLVED", "DISMISSED"], "description": "Investigation status" },
+        "resolvedBy": { "type": "string", "description": "Moderator ID who resolved" },
+        "resolutionNote": { "type": "string", "description": "Moderator notes" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Report submission timestamp" },
+        "resolvedAt": { "type": "string", "format": "date-time", "description": "Resolution timestamp" }
+      },
+      "required": ["id", "reviewId", "reporterId", "reason", "status", "createdAt"]
+    },
+    "DigitalProduct": {
+      "title": "DigitalProduct",
+      "description": "Digital publication or product for sale or free download",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier" },
+        "productId": { "type": "string", "description": "Public product ID" },
+        "title": { "type": "string", "maxLength": 200, "description": "Publication title" },
+        "slug": { "type": "string", "maxLength": 200, "description": "URL slug" },
+        "shortDescription": { "type": "string", "maxLength": 300, "description": "Short summary" },
+        "description": { "type": "string", "maxLength": 5000, "description": "Detailed description" },
+        "creatorId": { "type": "string", "description": "Author UID" },
+        "creatorName": { "type": "string", "description": "Author display name" },
+        "category": { "type": "string", "description": "Category slug" },
+        "price": { "type": "number", "description": "Price in NGN" },
+        "isFree": { "type": "boolean", "description": "Whether product is free" },
+        "productType": { "type": "string", "enum": ["EBOOK", "PDF", "GUIDE", "TEMPLATE", "DIGITAL_RESOURCE", "DOCUMENT", "OTHER_APPROVED"], "description": "Digital format type" },
+        "status": { "type": "string", "enum": ["DRAFT", "PENDING_REVIEW", "PUBLISHED", "UNPUBLISHED", "REJECTED", "ARCHIVED"], "description": "Publication status" },
+        "visibility": { "type": "string", "enum": ["PUBLIC", "PRIVATE"], "description": "Catalog visibility" }
+      },
+      "required": ["id", "productId", "title", "slug", "creatorId", "category", "price", "isFree", "productType", "status"]
+    },
+    "DigitalProductCategory": {
+      "title": "DigitalProductCategory",
+      "description": "Category for digital items and publications",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Category ID" },
+        "slug": { "type": "string", "description": "URL slug" },
+        "name": { "type": "string", "description": "Category name" },
+        "description": { "type": "string", "description": "Category overview" }
+      },
+      "required": ["id", "slug", "name"]
+    },
+    "DigitalEntitlement": {
+      "title": "DigitalEntitlement",
+      "description": "Proof of purchase/ownership granting digital download access",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Entitlement ID" },
+        "userId": { "type": "string", "description": "Owner user UID" },
+        "digitalProductId": { "type": "string", "description": "Target digital product" },
+        "status": { "type": "string", "enum": ["ACTIVE", "REVOKED", "EXPIRED"], "description": "License status" },
+        "downloadCount": { "type": "number", "description": "Number of downloads" },
+        "grantedAt": { "type": "string", "format": "date-time", "description": "Grant timestamp" }
+      },
+      "required": ["id", "userId", "digitalProductId", "status", "grantedAt"]
+    },
+    "DigitalProductReport": {
+      "title": "DigitalProductReport",
+      "description": "Moderation report filed against a digital publication",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Report ID" },
+        "digitalProductId": { "type": "string", "description": "Product ID" },
+        "reporterUserId": { "type": "string", "description": "Reporting user ID" },
+        "reason": { "type": "string", "enum": ["COPYRIGHT_INFRINGEMENT", "MISLEADING_CONTENT", "MALICIOUS_FILE", "INAPPROPRIATE_CONTENT", "POOR_QUALITY", "OTHER"], "description": "Reason" },
+        "details": { "type": "string", "description": "Detailed explanation" },
+        "status": { "type": "string", "enum": ["PENDING", "INVESTIGATING", "RESOLVED", "DISMISSED"], "description": "Status" }
+      },
+      "required": ["id", "digitalProductId", "reporterUserId", "reason", "details", "status"]
+    },
+    "Wallet": {
+      "title": "Wallet",
+      "description": "Financial wallet account tracking pending, available, and held balances for eligible earnings",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Wallet ID" },
+        "walletId": { "type": "string", "description": "Unique wallet identifier" },
+        "ownerId": { "type": "string", "description": "Beneficiary user or account ID" },
+        "ownerType": { "type": "string", "enum": ["USER", "SELLER", "CREATOR", "AFFILIATE", "PLATFORM"], "description": "Owner classification" },
+        "walletType": { "type": "string", "enum": ["AFFILIATE_EARNINGS", "SELLER_EARNINGS", "CREATOR_EARNINGS", "PLATFORM_ACCOUNT", "OTHER_AUTHORIZED_BUSINESS_ACCOUNT"], "description": "Role-specific wallet type" },
+        "currency": { "type": "string", "description": "Wallet currency (NGN)" },
+        "status": { "type": "string", "enum": ["ACTIVE", "RESTRICTED", "SUSPENDED", "CLOSED"], "description": "Wallet status" },
+        "pendingBalance": { "type": "number", "description": "Funds awaiting maturity or delivery" },
+        "availableBalance": { "type": "number", "description": "Withdrawable funds" },
+        "heldBalance": { "type": "number", "description": "Restricted/reserved funds" },
+        "lifetimeCredited": { "type": "number", "description": "Cumulative earnings credited" },
+        "lifetimeDebited": { "type": "number", "description": "Cumulative earnings disbursed" }
+      },
+      "required": ["id", "walletId", "ownerId", "walletType", "currency", "status", "pendingBalance", "availableBalance", "heldBalance"]
+    },
+    "LedgerEntry": {
+      "title": "LedgerEntry",
+      "description": "Immutable double-entry financial ledger movement",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique entry ID" },
+        "walletId": { "type": "string", "description": "Target wallet" },
+        "transactionId": { "type": "string", "description": "Human-readable transaction reference" },
+        "entryType": { "type": "string", "enum": ["CREDIT", "DEBIT", "HOLD", "RELEASE", "REVERSAL", "ADJUSTMENT", "PAYOUT"], "description": "Movement classification" },
+        "direction": { "type": "string", "enum": ["CREDIT", "DEBIT"], "description": "Direction" },
+        "amount": { "type": "number", "description": "Transaction amount" },
+        "currency": { "type": "string", "description": "Currency code" },
+        "status": { "type": "string", "enum": ["POSTED", "PENDING", "REVERSED"], "description": "Posting status" },
+        "idempotencyKey": { "type": "string", "description": "Unique idempotency guard key" },
+        "sourceType": { "type": "string", "description": "Source financial event category" },
+        "sourceReferenceId": { "type": "string", "description": "Underlying order, payout, or commission ID" },
+        "description": { "type": "string", "description": "Auditable narration" }
+      },
+      "required": ["id", "walletId", "transactionId", "entryType", "direction", "amount", "currency", "status", "sourceType", "sourceReferenceId"]
+    },
+    "WalletPayoutRequest": {
+      "title": "WalletPayoutRequest",
+      "description": "Withdrawal request submitted against eligible available wallet balance",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Payout ID" },
+        "payoutId": { "type": "string", "description": "Public payout reference" },
+        "walletId": { "type": "string", "description": "Source wallet" },
+        "beneficiaryUserId": { "type": "string", "description": "Requesting user ID" },
+        "amount": { "type": "number", "description": "Disbursement amount" },
+        "currency": { "type": "string", "description": "Currency" },
+        "status": { "type": "string", "enum": ["REQUESTED", "UNDER_REVIEW", "APPROVED", "PROCESSING", "COMPLETED", "FAILED", "REJECTED", "CANCELLED"], "description": "Lifecycle status" },
+        "internalReference": { "type": "string", "description": "Internal audit reference" }
+      },
+      "required": ["id", "payoutId", "walletId", "beneficiaryUserId", "amount", "currency", "status", "internalReference"]
+    },
+    "WalletHold": {
+      "title": "WalletHold",
+      "description": "Administrative or compliance hold placed on wallet funds",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Hold ID" },
+        "holdId": { "type": "string", "description": "Hold reference" },
+        "walletId": { "type": "string", "description": "Target wallet" },
+        "amount": { "type": "number", "description": "Held amount" },
+        "currency": { "type": "string", "description": "Currency" },
+        "reason": { "type": "string", "description": "Documented reason" },
+        "status": { "type": "string", "enum": ["ACTIVE", "RELEASED", "FORFEITED"], "description": "Hold status" }
+      },
+      "required": ["id", "holdId", "walletId", "amount", "currency", "reason", "status"]
+    },
+    "UnifiedTransaction": {
+      "title": "UnifiedTransaction",
+      "description": "Cross-ecosystem financial transaction linking orders, payments, refunds, commissions, and wallets",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Transaction identifier" },
+        "transactionId": { "type": "string", "description": "Unique internal transaction ID" },
+        "transactionReference": { "type": "string", "description": "Human-readable reference" },
+        "transactionType": { "type": "string", "enum": ["ORDER_PAYMENT", "SALE", "COMMISSION", "PLATFORM_FEE", "REFUND", "REVERSAL", "WALLET_CREDIT", "WALLET_DEBIT", "PAYOUT", "SETTLEMENT", "HOLD", "RELEASE", "ADJUSTMENT"], "description": "Transaction type" },
+        "sourceSystem": { "type": "string", "description": "Originating ecosystem module" },
+        "sourceEntityType": { "type": "string", "description": "Originating entity category" },
+        "sourceEntityId": { "type": "string", "description": "Originating entity ID" },
+        "amount": { "type": "number", "description": "Transaction magnitude" },
+        "currency": { "type": "string", "description": "ISO currency code" },
+        "status": { "type": "string", "enum": ["CREATED", "PENDING", "PROCESSING", "POSTED", "ON_HOLD", "COMPLETED", "FAILED", "CANCELLED", "REVERSED"], "description": "Lifecycle state" },
+        "idempotencyKey": { "type": "string", "description": "Unique idempotency guard key" }
+      },
+      "required": ["id", "transactionId", "transactionReference", "transactionType", "sourceSystem", "sourceEntityType", "sourceEntityId", "amount", "currency", "status", "idempotencyKey"]
+    },
+    "JournalEntry": {
+      "title": "JournalEntry",
+      "description": "Double-entry balanced accounting voucher record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Journal ID" },
+        "journalEntryId": { "type": "string", "description": "Unique journal voucher ID" },
+        "journalReference": { "type": "string", "description": "Audit reference" },
+        "sourceTransactionId": { "type": "string", "description": "Linked transaction ID" },
+        "currency": { "type": "string", "description": "Currency" },
+        "totalDebit": { "type": "number", "description": "Sum of debit postings" },
+        "totalCredit": { "type": "number", "description": "Sum of credit postings" },
+        "isBalanced": { "type": "boolean", "description": "True if debit === credit" },
+        "status": { "type": "string", "enum": ["DRAFT", "POSTED", "REVERSED", "FAILED"], "description": "Posting status" }
+      },
+      "required": ["id", "journalEntryId", "journalReference", "sourceTransactionId", "currency", "totalDebit", "totalCredit", "isBalanced", "status"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Individual member profile containing identity, role, and preferences. Restricted so only the owner can read/update permitted fields."
+    },
+    "/admins/{userId}": {
+      "schema": "AdminRecord",
+      "description": "Protected administrative registry used by backend security rules for role checking."
+    },
+    "/sellerApplications/{applicationId}": {
+      "schema": "SellerApplication",
+      "description": "Seller applications. Users can create and read their own. Admin reviews and updates status."
+    },
+    "/sellers/{sellerId}": {
+      "schema": "SellerProfile",
+      "description": "Public store profiles for verified sellers. Verified merchants manage their own store information."
+    },
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Marketplace products collection. Public can read published products. Verified sellers can manage their own products."
+    },
+    "/categories/{categoryId}": {
+      "schema": "Category",
+      "description": "Marketplace category registry. Publicly readable. Admin writeable."
+    },
+    "/users/{userId}/cart/{itemId}": {
+      "schema": "CartItem",
+      "description": "Authenticated user shopping cart subcollection. Strictly owner read/write."
+    },
+    "/users/{userId}/wishlist/{productId}": {
+      "schema": "WishlistItem",
+      "description": "Authenticated user saved products. Strictly owner read/write."
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Customer orders. Customer can only access their own orders. Server-authoritative writes."
+    },
+    "/orderItems/{orderItemId}": {
+      "schema": "OrderItem",
+      "description": "Order line items. Seller can only view their own items. Customer can view items for their order. Server-authoritative writes."
+    },
+    "/payments/{paymentId}": {
+      "schema": "PaymentRecord",
+      "description": "Payment records. Payer can view their records. Server-authoritative writes."
+    },
+    "/serviceCategories/{categoryId}": {
+      "schema": "ServiceCategory",
+      "description": "Tech and digital service categories. Publicly readable. Admin managed."
+    },
+    "/experts/{expertId}": {
+      "schema": "ExpertProfile",
+      "description": "Ecosystem expert profiles. Public can view verified public profiles. Experts manage their own profile details. Admin controls verification."
+    },
+    "/projectRequests/{requestId}": {
+      "schema": "ProjectRequest",
+      "description": "Customer service project requests. Strictly isolated between customer, assigned expert, and Nexovira management."
+    },
+    "/projectRequests/{requestId}/updates/{updateId}": {
+      "schema": "ProjectUpdate",
+      "description": "Project communication subcollection. Accessible only to authorized project participants."
+    },
+    "/expertApplications/{applicationId}": {
+      "schema": "ExpertApplication",
+      "description": "Applications to become an ecosystem expert. User can create and view own application. Admin reviews and approves."
+    },
+    "/auditLogs/{logId}": {
+      "schema": "AuditLog",
+      "description": "Administrative audit trail. Strictly restricted to admin and management oversight."
+    },
+    "/notificationEvents/{eventId}": {
+      "schema": "NotificationEvent",
+      "description": "Ecosystem notification logs. Accessible to authorized recipient and administrators."
+    },
+    "/notifications/{notificationId}": {
+      "schema": "NotificationRecord",
+      "description": "Unified in-app notifications. Members can access their own notifications and mark them as read."
+    },
+    "/userNotificationPreferences/{userId}": {
+      "schema": "UserNotificationPreferences",
+      "description": "Member notification preferences across channels. Strictly owner read/write."
+    },
+    "/reviews/{reviewId}": {
+      "schema": "Review",
+      "description": "Verified reviews and ratings. Public can read published reviews. Authenticated verified users can create and edit their reviews. Management can moderate."
+    },
+    "/reviewReports/{reportId}": {
+      "schema": "ReviewReport",
+      "description": "Review moderation flags and user reports. Authenticated users can submit reports. Management reviews and resolves."
+    },
+    "/digitalProductCategories/{categoryId}": {
+      "schema": "DigitalProductCategory",
+      "description": "Categories for digital items and resources."
+    },
+    "/digitalProducts/{productId}": {
+      "schema": "DigitalProduct",
+      "description": "Digital publications and media items. Public can view published items, creators manage their own, management moderates."
+    },
+    "/digitalEntitlements/{entitlementId}": {
+      "schema": "DigitalEntitlement",
+      "description": "Digital ownership entitlements granting download access."
+    },
+    "/digitalProductReports/{reportId}": {
+      "schema": "DigitalProductReport",
+      "description": "Digital product moderation and content violation reports."
+    },
+    "/wallets/{walletId}": {
+      "schema": "Wallet",
+      "description": "User and platform financial wallets. Accessible to owner and authorized financial administrators."
+    },
+    "/walletLedger/{entryId}": {
+      "schema": "LedgerEntry",
+      "description": "Authoritative immutable financial ledger entries."
+    },
+    "/walletPayouts/{payoutId}": {
+      "schema": "WalletPayoutRequest",
+      "description": "Withdrawal requests across ecosystem wallets."
+    },
+    "/walletHolds/{holdId}": {
+      "schema": "WalletHold",
+      "description": "Administrative and risk holds placed on wallet funds."
+    },
+    "/unifiedTransactions/{transactionId}": {
+      "schema": "UnifiedTransaction",
+      "description": "Unified financial transactions connecting orders, payments, refunds, commissions, and wallets."
+    },
+    "/accountingJournal/{journalEntryId}": {
+      "schema": "JournalEntry",
+      "description": "Double-entry accounting journal vouchers."
+    }
+  }
+}
