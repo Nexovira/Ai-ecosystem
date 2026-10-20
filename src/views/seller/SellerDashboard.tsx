@@ -21,6 +21,8 @@ import {
   Clock,
   BookOpen,
   BarChart3,
+  Image as ImageIcon,
+  HelpCircle,
 } from 'lucide-react';
 import { Container } from '../../components/common/Container';
 import { Button } from '../../components/common/Button';
@@ -29,6 +31,7 @@ import { useSeller } from '../../context/SellerContext';
 import { useMarketplace } from '../../context/MarketplaceContext';
 import { useRouter } from '../../context/RouterContext';
 import { Product } from '../../types/marketplace';
+import { CloudinaryMediaGuide } from '../../components/seller/CloudinaryMediaGuide';
 
 export const SellerDashboard: React.FC = () => {
   const { user, profile } = useAuth();
@@ -47,7 +50,7 @@ export const SellerDashboard: React.FC = () => {
   const { navigate } = useRouter();
 
   // Active Tab
-  const [activeTab, setActiveTab] = useState<'overview' | 'analytics' | 'products' | 'inventory' | 'profile' | 'verification'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'analytics' | 'products' | 'inventory' | 'profile' | 'verification' | 'media-guide'>('overview');
 
   // Filter & Search inside seller products
   const [productSearch, setProductSearch] = useState('');
@@ -257,6 +260,7 @@ export const SellerDashboard: React.FC = () => {
               { id: 'inventory', label: 'Inventory Management', icon: Boxes },
               { id: 'profile', label: 'Storefront Profile', icon: Store },
               { id: 'verification', label: 'Merchant Verification', icon: ShieldCheck },
+              { id: 'media-guide', label: 'Image & Media Guide', icon: ImageIcon },
             ].map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
@@ -780,6 +784,10 @@ export const SellerDashboard: React.FC = () => {
               </div>
             )}
 
+            {/* TAB 6: MEDIA & CLOUDINARY GUIDE */}
+            {activeTab === 'media-guide' && (
+              <CloudinaryMediaGuide />
+            )}
           </main>
 
         </div>

@@ -15,8 +15,19 @@ import {
   Filter,
   CheckCircle,
   X,
+  AlertTriangle,
+  Building2,
+  ArrowRight,
 } from 'lucide-react';
 import { EligibleOffer } from '../../types/affiliate';
+import { AffiliateOnboardingChecklist } from '../../components/affiliate/AffiliateOnboardingChecklist';
+import {
+  copyTextToClipboard,
+  shareLinkNatively,
+  buildPublicProductUrl,
+  buildReferralUrl,
+  buildShortReferralUrl,
+} from '../../utils/affiliateLinkUtils';
 
 export const AffiliateOffersPage: React.FC = () => {
   const { navigate } = useRouter();
@@ -27,9 +38,15 @@ export const AffiliateOffersPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedOfferForLink, setSelectedOfferForLink] = useState<EligibleOffer | null>(null);
   const [generatedLinkUrl, setGeneratedLinkUrl] = useState<string | null>(null);
+  const [shortLinkUrl, setShortLinkUrl] = useState<string | null>(null);
+  const [normalProductUrl, setNormalProductUrl] = useState<string | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [copySuccessMsg, setCopySuccessMsg] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
+  const [showManualCopyModal, setShowManualCopyModal] = useState<string | null>(null);
+
+  const hasVerifiedPayout = Boolean(profile?.payoutProfile?.isVerified);
 
   const filteredOffers = offers.filter((off) => {
     if (activeTab === 'MARKETPLACE' && off.offerType !== 'MARKETPLACE_PRODUCT') return false;
@@ -55,27 +72,67 @@ export const AffiliateOffersPage: React.FC = () => {
       return;
     }
 
+    // Requirement 3: Enforce payout verification
+    if (!hasVerifiedPayout) {
+      navigate('/affiliate/payout');
+      return;
+    }
+
     setSelectedOfferForLink(offer);
     setIsGenerating(true);
     setLinkError(null);
     setGeneratedLinkUrl(null);
+    setShortLinkUrl(null);
     setLinkCopied(false);
+    setCopySuccessMsg(null);
+
+    const isAcademy = offer.offerType === 'ACADEMY_COURSE';
+    const normalUrl = buildPublicProductUrl(offer.targetSlug, isAcademy);
+    setNormalProductUrl(normalUrl);
+
+    if (profile?.affiliateCode) {
+      const refUrl = buildReferralUrl(offer.targetSlug, profile.affiliateCode, isAcademy);
+      const shortUrl = buildShortReferralUrl(offer.targetSlug, profile.affiliateCode);
+      setGeneratedLinkUrl(refUrl);
+      setShortLinkUrl(shortUrl);
+    }
 
     const result = await generateReferralLink(offer.offerId);
     setIsGenerating(false);
 
     if (result.success && result.shareableUrl) {
-      setGeneratedLinkUrl(result.shareableUrl);
-    } else {
+      setShortLinkUrl(result.shareableUrl);
+    } else if (!result.success) {
       setLinkError(result.error || 'Failed to generate link.');
     }
   };
 
-  const copyGeneratedLink = () => {
-    if (!generatedLinkUrl) return;
-    navigator.clipboard.writeText(generatedLinkUrl);
-    setLinkCopied(true);
-    setTimeout(() => setLinkCopied(false), 2500);
+  const handleCopyLink = async (urlToCopy: string) => {
+    if (!urlToCopy) return;
+    setCopySuccessMsg(null);
+    const result = await copyTextToClipboard(urlToCopy);
+    if (result.success) {
+      setLinkCopied(true);
+      setCopySuccessMsg('Referral link copied to clipboard!');
+      setTimeout(() => {
+        setLinkCopied(false);
+        setCopySuccessMsg(null);
+      }, 3000);
+    } else {
+      setShowManualCopyModal(urlToCopy);
+    }
+  };
+
+  const handleShareLink = async (urlToShare: string, title: string) => {
+    if (!urlToShare) return;
+    const res = await shareLinkNatively({
+      title: `${title} — Nexovira`,
+      text: `Check out ${title} on Nexovira with guaranteed authenticity and verified delivery.`,
+      url: urlToShare,
+    });
+    if (!res.supported) {
+      handleCopyLink(urlToShare);
+    }
   };
 
   const formatNaira = (amount: number) => {
@@ -97,26 +154,42 @@ export const AffiliateOffersPage: React.FC = () => {
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#01213D] border border-[#0682F4]/40 text-[#08E6F9] text-xs font-semibold uppercase tracking-wider mb-3">
               <Share2 className="w-3.5 h-3.5" />
-              Product Discovery
+              Product & Course Discovery
             </div>
             <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
               Eligible Affiliate Offers
             </h1>
             <p className="mt-2 text-sm text-[#CCD2D9] max-w-2xl">
-              Browse approved Nexovira hardware and academy programs with configured commission rates.
-              Generate targeted referral links and track conversions directly.
+              Browse approved Nexovira hardware and engineering academy cohorts with configured commission rates.
+              Generate unique, server-tracked referral links to share on any external website, blog, or social channel.
             </p>
           </div>
 
-          {affiliateStatus === 'APPROVED' && (
+          <div className="flex items-center gap-3">
+            {affiliateStatus === 'APPROVED' && (
+              <button
+                onClick={() => navigate('/affiliate/dashboard')}
+                className="px-4 py-2.5 rounded-xl text-xs font-semibold text-[#CCD2D9] bg-[#01213D] hover:text-white border border-[#2B7EB5]/40 transition cursor-pointer"
+              >
+                Dashboard
+              </button>
+            )}
             <button
-              onClick={() => navigate('/affiliate/dashboard')}
-              className="self-start md:self-auto px-4 py-2.5 rounded-xl text-xs font-semibold text-[#CCD2D9] bg-[#01213D] hover:text-white border border-[#2B7EB5]/40 transition cursor-pointer"
+              onClick={() => navigate('/affiliate/payout')}
+              className="px-4 py-2.5 rounded-xl text-xs font-semibold text-[#CCD2D9] bg-[#01213D] hover:text-white border border-[#2B7EB5]/40 transition cursor-pointer"
             >
-              Back to Dashboard
+              Payout Details
             </button>
-          )}
+          </div>
         </div>
+
+        {/* Payout Gate Warning if approved but bank is not verified */}
+        {affiliateStatus === 'APPROVED' && !hasVerifiedPayout && !isLoading && (
+          <AffiliateOnboardingChecklist
+            onSetupClick={() => navigate('/affiliate/payout')}
+            showActions={true}
+          />
+        )}
 
         {/* Filter and Search Bar */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -141,7 +214,7 @@ export const AffiliateOffersPage: React.FC = () => {
               }`}
             >
               <Package className="w-3.5 h-3.5" />
-              Marketplace
+              Hardware ({offers.filter((o) => o.offerType === 'MARKETPLACE_PRODUCT').length})
             </button>
             <button
               onClick={() => setActiveTab('ACADEMY')}
@@ -152,7 +225,7 @@ export const AffiliateOffersPage: React.FC = () => {
               }`}
             >
               <BookOpen className="w-3.5 h-3.5" />
-              Academy Cohorts
+              Academy ({offers.filter((o) => o.offerType === 'ACADEMY_COURSE').length})
             </button>
           </div>
 
@@ -163,7 +236,7 @@ export const AffiliateOffersPage: React.FC = () => {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search offers or categories..."
+              placeholder="Filter offers or categories..."
               className="w-full pl-10 pr-4 py-2 rounded-xl bg-[#01213D]/40 border border-[#2B7EB5]/30 focus:border-[#0682F4] focus:outline-none text-white text-xs placeholder:text-[#CCD2D9]/50"
             />
           </div>
@@ -185,6 +258,7 @@ export const AffiliateOffersPage: React.FC = () => {
             {filteredOffers.map((offer) => {
               const estimatedEarnings = calculateEstimatedEarnings(offer);
               const isMarketplace = offer.offerType === 'MARKETPLACE_PRODUCT';
+              const publicOfferUrl = buildPublicProductUrl(offer.targetSlug, !isMarketplace);
 
               return (
                 <div
@@ -208,7 +282,7 @@ export const AffiliateOffersPage: React.FC = () => {
                                 : 'bg-[#01213D]/80 border-[#06C3F8]/60 text-[#06C3F8]'
                             }`}
                           >
-                            {isMarketplace ? 'Hardware' : 'Academy Cohort'}
+                            {isMarketplace ? 'Computing Hardware' : 'Academy Cohort'}
                           </span>
                         </div>
                       </div>
@@ -218,9 +292,22 @@ export const AffiliateOffersPage: React.FC = () => {
                       <div className="text-[11px] font-semibold text-[#08E6F9] uppercase tracking-wider mb-1">
                         {offer.targetCategory}
                       </div>
-                      <h3 className="text-base font-bold text-white leading-snug line-clamp-2 mb-3">
+                      <h3 className="text-base font-bold text-white leading-snug line-clamp-2 mb-2">
                         {offer.targetTitle}
                       </h3>
+
+                      {/* Public URL indicator */}
+                      <div className="mb-3">
+                        <a
+                          href={publicOfferUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[11px] text-[#CCD2D9] hover:text-[#08E6F9] inline-flex items-center gap-1 transition"
+                        >
+                          <ExternalLink className="w-3 h-3 text-[#08E6F9]" />
+                          View Public Product Page
+                        </a>
+                      </div>
 
                       {/* Pricing & Commission Details */}
                       <div className="p-3.5 rounded-xl bg-[#000000]/60 border border-[#2B7EB5]/20 space-y-2 mb-4">
@@ -260,7 +347,7 @@ export const AffiliateOffersPage: React.FC = () => {
                       className="w-full py-3 px-4 rounded-xl font-bold text-xs text-white bg-gradient-to-r from-[#01213D] via-[#0682F4] to-[#06C3F8] hover:from-[#0682F4] hover:to-[#08E6F9] transition cursor-pointer flex items-center justify-center gap-2 shadow-md shadow-[#0682F4]/20"
                     >
                       <Share2 className="w-4 h-4" />
-                      Generate Referral Link
+                      {hasVerifiedPayout ? 'Get Referral Link & Share' : 'Verify Bank to Unlock Link'}
                     </button>
                   </div>
                 </div>
@@ -269,10 +356,10 @@ export const AffiliateOffersPage: React.FC = () => {
           </div>
         )}
 
-        {/* Link Generation Modal */}
+        {/* Link Generation & Copy Modal */}
         {selectedOfferForLink && (
           <div className="fixed inset-0 z-50 bg-[#000000]/80 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="max-w-lg w-full p-6 sm:p-8 rounded-2xl bg-[#01213D] border border-[#0682F4]/60 shadow-2xl relative">
+            <div className="max-w-xl w-full p-6 sm:p-8 rounded-2xl bg-[#01213D] border border-[#0682F4]/60 shadow-2xl relative max-h-[90vh] overflow-y-auto">
               <button
                 onClick={() => setSelectedOfferForLink(null)}
                 className="absolute top-5 right-5 text-[#CCD2D9] hover:text-white transition cursor-pointer"
@@ -285,12 +372,31 @@ export const AffiliateOffersPage: React.FC = () => {
                 Referral Link Ready
               </div>
 
-              <h2 className="text-xl font-extrabold text-white mb-1">
-                {selectedOfferForLink.targetTitle}
-              </h2>
-              <p className="text-xs text-[#CCD2D9] mb-6">
-                Share this link with your audience. Any qualifying purchases made within 30 days will be server-attributed to your affiliate wallet.
-              </p>
+              {/* Product Header in Modal */}
+              <div className="flex items-start gap-4 mb-4">
+                {selectedOfferForLink.targetImage && (
+                  <img
+                    src={selectedOfferForLink.targetImage}
+                    alt={selectedOfferForLink.targetTitle}
+                    className="w-16 h-16 rounded-xl object-cover bg-black shrink-0 border border-[#2B7EB5]/30"
+                  />
+                )}
+                <div>
+                  <h2 className="text-lg font-extrabold text-white leading-snug">
+                    {selectedOfferForLink.targetTitle}
+                  </h2>
+                  <div className="text-xs text-[#08E6F9] mt-0.5 font-semibold">
+                    {selectedOfferForLink.targetCategory} • Est. Commission: {formatNaira(calculateEstimatedEarnings(selectedOfferForLink))}
+                  </div>
+                </div>
+              </div>
+
+              {copySuccessMsg && (
+                <div className="p-3 mb-4 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2">
+                  <Check className="w-4 h-4 text-emerald-400" />
+                  {copySuccessMsg}
+                </div>
+              )}
 
               {isGenerating ? (
                 <div className="py-8 text-center text-sm text-[#CCD2D9]">
@@ -301,20 +407,54 @@ export const AffiliateOffersPage: React.FC = () => {
                   {linkError}
                 </div>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-5">
+                  {/* Public Normal URL Info */}
+                  <div className="p-3 rounded-xl bg-[#000000]/60 border border-[#2B7EB5]/20 text-xs">
+                    <span className="text-[#CCD2D9]">Public Store URL:</span>{' '}
+                    <a
+                      href={normalProductUrl || '#'}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-mono text-white/80 hover:text-[#08E6F9] inline-flex items-center gap-1 underline ml-1"
+                    >
+                      {normalProductUrl}
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+
+                  {/* Primary Unique Referral URL */}
                   <div>
-                    <label className="block text-[11px] font-semibold text-[#CCD2D9] uppercase tracking-wider mb-1.5">
-                      Your Unique Referral URL
-                    </label>
-                    <div className="p-3 rounded-xl bg-[#000000] border border-[#2B7EB5]/40 font-mono text-xs text-[#08E6F9] break-all select-all">
-                      {generatedLinkUrl}
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-[11px] font-semibold text-[#CCD2D9] uppercase tracking-wider">
+                        Your Unique Referral URL (With Ref Code) *
+                      </label>
+                      <span className="text-[10px] text-[#08E6F9] font-mono">
+                        Code: {profile?.affiliateCode}
+                      </span>
+                    </div>
+
+                    <div className="p-3.5 rounded-xl bg-[#000000] border border-[#2B7EB5]/40 font-mono text-xs text-[#08E6F9] break-all select-all flex items-center justify-between gap-2">
+                      <span>{generatedLinkUrl || shortLinkUrl}</span>
                     </div>
                   </div>
 
-                  <div className="flex gap-3">
+                  {/* Short / Direct Link Option */}
+                  {shortLinkUrl && (
+                    <div>
+                      <label className="block text-[11px] font-semibold text-[#CCD2D9] uppercase tracking-wider mb-1.5">
+                        Compact Slug Link
+                      </label>
+                      <div className="p-3 rounded-xl bg-[#000000]/60 border border-[#2B7EB5]/30 font-mono text-xs text-[#CCD2D9] break-all select-all">
+                        {shortLinkUrl}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Action Buttons: Copy, Preview, Share */}
+                  <div className="flex flex-col sm:flex-row gap-3 pt-2">
                     <button
-                      onClick={copyGeneratedLink}
-                      className="flex-1 py-3 px-4 rounded-xl font-bold text-xs text-white bg-gradient-to-r from-[#01213D] via-[#0682F4] to-[#08E6F9] hover:from-[#0682F4] hover:to-[#08E6F9] transition cursor-pointer flex items-center justify-center gap-2"
+                      onClick={() => handleCopyLink(generatedLinkUrl || shortLinkUrl || '')}
+                      className="flex-1 py-3 px-4 rounded-xl font-bold text-xs text-white bg-gradient-to-r from-[#01213D] via-[#0682F4] to-[#08E6F9] hover:from-[#0682F4] hover:to-[#08E6F9] transition cursor-pointer flex items-center justify-center gap-2 shadow-md shadow-[#0682F4]/20"
                     >
                       {linkCopied ? (
                         <>
@@ -328,15 +468,64 @@ export const AffiliateOffersPage: React.FC = () => {
                         </>
                       )}
                     </button>
-                    <button
-                      onClick={() => setSelectedOfferForLink(null)}
-                      className="py-3 px-4 rounded-xl text-xs font-semibold text-[#CCD2D9] bg-[#000000] hover:text-white border border-[#2B7EB5]/30 transition cursor-pointer"
+
+                    <a
+                      href={generatedLinkUrl || shortLinkUrl || '#'}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="py-3 px-4 rounded-xl text-xs font-semibold text-[#CCD2D9] bg-[#000000] hover:text-white border border-[#2B7EB5]/30 transition cursor-pointer flex items-center justify-center gap-1.5"
+                      title="Open link in new browser tab to test destination"
                     >
-                      Done
+                      <ExternalLink className="w-4 h-4 text-[#08E6F9]" />
+                      Preview
+                    </a>
+
+                    <button
+                      onClick={() => handleShareLink(generatedLinkUrl || shortLinkUrl || '', selectedOfferForLink.targetTitle)}
+                      className="py-3 px-4 rounded-xl text-xs font-semibold text-[#CCD2D9] bg-[#000000] hover:text-white border border-[#2B7EB5]/30 transition cursor-pointer flex items-center justify-center gap-1.5"
+                      title="Share using native device share sheet"
+                    >
+                      <Share2 className="w-4 h-4 text-[#08E6F9]" />
+                      Share
                     </button>
                   </div>
+                  <p className="text-[11px] text-[#CCD2D9]/70 leading-relaxed">
+                    Attribution is automatically preserved when buyers visit via this link. Safe to share on any external website, blog, or social network.
+                  </p>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Manual Copy Fallback Modal */}
+        {showManualCopyModal && (
+          <div className="fixed inset-0 z-50 bg-[#000000]/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="max-w-md w-full p-6 rounded-2xl bg-[#01213D] border border-[#0682F4]/60 shadow-2xl relative">
+              <button
+                onClick={() => setShowManualCopyModal(null)}
+                className="absolute top-4 right-4 text-[#CCD2D9] hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <h3 className="text-base font-bold text-white mb-2">Copy Referral Link</h3>
+              <p className="text-xs text-[#CCD2D9] mb-4">
+                Clipboard write permission was restricted by your browser. Please select all the text below and press <strong className="text-white">Ctrl+C</strong> (or <strong className="text-white">Cmd+C</strong> on Mac):
+              </p>
+              <textarea
+                readOnly
+                value={showManualCopyModal}
+                className="w-full h-24 p-3 rounded-xl bg-[#000000] border border-[#2B7EB5]/40 font-mono text-xs text-[#08E6F9] select-all focus:outline-none"
+                onClick={(e) => (e.target as HTMLTextAreaElement).select()}
+              />
+              <div className="mt-4 flex justify-end">
+                <button
+                  onClick={() => setShowManualCopyModal(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#0682F4] hover:bg-[#05A9F7] cursor-pointer"
+                >
+                  Done
+                </button>
+              </div>
             </div>
           </div>
         )}

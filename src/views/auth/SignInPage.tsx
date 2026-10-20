@@ -230,18 +230,6 @@ export const SignInPage: React.FC = () => {
                 Create Account
               </button>
             </div>
-
-            {/* Administrator Setup Portal */}
-            <div className="mt-4 pt-3 border-t border-[#0682F4]/10 text-center">
-              <button
-                type="button"
-                onClick={() => navigate('/admin-setup')}
-                className="text-[11px] font-mono text-[#08E6F9]/80 hover:text-[#08E6F9] hover:underline cursor-pointer inline-flex items-center gap-1.5"
-              >
-                <Lock className="w-3 h-3" />
-                <span>First Administrator Setup & Role Verification</span>
-              </button>
-            </div>
           </div>
         </div>
       </Container>

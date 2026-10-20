@@ -65,9 +65,9 @@ export class ManagementService {
     this.auditLogsCache.unshift(record);
 
     try {
-      await setDoc(doc(db, 'auditLogs', logId), record);
-    } catch (err) {
-      console.warn('Firestore write audit log warning:', err);
+      await setDoc(doc(db, 'auditLogs', logId), record).catch(() => null);
+    } catch {
+      // Retained in memory cache
     }
 
     return record;

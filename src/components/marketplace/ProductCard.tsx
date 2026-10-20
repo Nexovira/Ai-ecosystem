@@ -14,7 +14,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOpenSignInP
   const { navigate } = useRouter();
 
   const wishlisted = isWishlisted(product.productId);
-  const primaryImage = product.productImages[0]?.url || '';
+  const [imageFailed, setImageFailed] = React.useState(false);
+  const primaryImage = product.productImages.find((img) => img.isPrimary)?.url || product.productImages[0]?.url || '';
   const isAvailable = product.availabilityStatus === 'IN_STOCK' || product.availabilityStatus === 'LOW_STOCK';
 
   const handleWishlistClick = (e: React.MouseEvent) => {
@@ -56,16 +57,18 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOpenSignInP
       <div>
         {/* Product Image Slot with Fallback Container */}
         <div className="relative aspect-[4/3] bg-[#011629] overflow-hidden">
-          {primaryImage ? (
+          {primaryImage && !imageFailed ? (
             <img
               src={primaryImage}
               alt={product.name}
               referrerPolicy="no-referrer"
+              onError={() => setImageFailed(true)}
               className="w-full h-full object-cover object-center transition-transform duration-500 group-hover:scale-105"
             />
           ) : (
-            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#01213D] to-[#011629] text-[#CCD2D9]/40 font-mono text-xs">
-              Hardware Imagery
+            <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-[#01213D] to-[#011629] text-[#CCD2D9]/60 p-4 text-center">
+              <span className="font-mono text-xs text-[#08E6F9]">{product.brand}</span>
+              <span className="font-mono text-[11px] text-[#CCD2D9]/70 line-clamp-1 mt-1">{product.name}</span>
             </div>
           )}
 

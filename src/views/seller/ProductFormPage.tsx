@@ -7,11 +7,18 @@ import {
   Image as ImageIcon,
   DollarSign,
   Package,
+  Boxes,
   Layers,
   Sparkles,
   CheckCircle2,
   AlertCircle,
   RefreshCw,
+  ArrowUp,
+  ArrowDown,
+  HelpCircle,
+  Star,
+  ExternalLink,
+  Eye,
 } from 'lucide-react';
 import { Container } from '../../components/common/Container';
 import { Button } from '../../components/common/Button';
@@ -21,6 +28,8 @@ import { useMarketplace } from '../../context/MarketplaceContext';
 import { useRouter } from '../../context/RouterContext';
 import { ProductFormInput } from '../../types/seller';
 import { Product, ProductAvailability, ProductStatus } from '../../types/marketplace';
+import { CloudinaryMediaGuide } from '../../components/seller/CloudinaryMediaGuide';
+import { MAX_PRODUCT_IMAGES, validateProductImageUrl } from '../../utils/imageUrlValidator';
 
 // Reusable preset studio asset options for quick merchant selection
 const tvImg = '/assets/images/marketplace_smart_tv_1790288884514.jpg';
@@ -103,10 +112,13 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({ productId }) =
     }
   };
 
-  // Images
+  // Multiple Images Support (Max configured via MAX_PRODUCT_IMAGES)
   const [primaryImageUrl, setPrimaryImageUrl] = useState(tvImg);
   const [additionalImages, setAdditionalImages] = useState<string[]>([]);
-  const [newImageUrl, setNewImageUrl] = useState('');
+  const [primaryError, setPrimaryError] = useState<string | null>(null);
+  const [additionalErrors, setAdditionalErrors] = useState<Record<number, string>>({});
+  const [failedPreviews, setFailedPreviews] = useState<Record<string, boolean>>({});
+  const [showCloudinaryGuide, setShowCloudinaryGuide] = useState(false);
 
   // Specifications
   const [specs, setSpecs] = useState<{ label: string; value: string }[]>([
@@ -144,9 +156,12 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({ productId }) =
       setProductStatus(existingProduct.productStatus);
       setShortDescription(existingProduct.shortDescription);
       setFullDescription(existingProduct.fullDescription);
-      if (existingProduct.productImages && existingProduct.productImages[0]) {
-        setPrimaryImageUrl(existingProduct.productImages[0].url);
-        setAdditionalImages(existingProduct.productImages.slice(1).map((i) => i.url));
+      if (existingProduct.productImages && existingProduct.productImages.length > 0) {
+        const sorted = [...existingProduct.productImages].sort((a, b) => (a.order || 0) - (b.order || 0));
+        const prim = sorted.find((img) => img.isPrimary) || sorted[0];
+        const others = sorted.filter((img) => img !== prim).map((img) => img.url);
+        setPrimaryImageUrl(prim.url);
+        setAdditionalImages(others);
       }
       if (existingProduct.specifications) {
         setSpecs(existingProduct.specifications);
@@ -198,11 +213,102 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({ productId }) =
     setVariants(variants.filter((_, i) => i !== idx));
   };
 
-  const handleAddImage = () => {
-    if (newImageUrl.trim()) {
-      setAdditionalImages([...additionalImages, newImageUrl.trim()]);
-      setNewImageUrl('');
+  const handleVariantChange = (
+    idx: number,
+    field: 'name' | 'sku' | 'price' | 'stockQuantity' | 'attributeKey' | 'attributeValue',
+    val: string | number
+  ) => {
+    setVariants(
+      variants.map((v, i) => {
+        if (i !== idx) return v;
+        if (field === 'attributeKey' || field === 'attributeValue') {
+          const currentAttrs = { ...v.attributes };
+          const existingKey = Object.keys(currentAttrs)[0] || 'option';
+          const existingVal = Object.values(currentAttrs)[0] || 'Standard';
+          const newKey = field === 'attributeKey' ? String(val).trim() : existingKey;
+          const newVal = field === 'attributeValue' ? String(val).trim() : existingVal;
+          return {
+            ...v,
+            attributes: { [newKey || 'option']: newVal },
+          };
+        }
+        return {
+          ...v,
+          [field]: field === 'price' || field === 'stockQuantity' ? Math.max(0, Number(val) || 0) : val,
+        };
+      })
+    );
+  };
+
+  const handlePrimaryUrlChange = (val: string) => {
+    setPrimaryImageUrl(val);
+    setFailedPreviews((prev) => ({ ...prev, [val]: false }));
+    if (!val.trim()) {
+      setPrimaryError('Primary image URL is required.');
+    } else {
+      const res = validateProductImageUrl(val);
+      setPrimaryError(res.isValid ? null : (res.error || 'Invalid URL format'));
     }
+  };
+
+  const handleAddImageField = () => {
+    if (1 + additionalImages.length >= MAX_PRODUCT_IMAGES) return;
+    setAdditionalImages([...additionalImages, '']);
+  };
+
+  const handleAdditionalUrlChange = (idx: number, val: string) => {
+    const updated = [...additionalImages];
+    updated[idx] = val;
+    setAdditionalImages(updated);
+    setFailedPreviews((prev) => ({ ...prev, [val]: false }));
+    if (val.trim()) {
+      const res = validateProductImageUrl(val);
+      setAdditionalErrors((prev) => ({
+        ...prev,
+        [idx]: res.isValid ? '' : (res.error || 'Invalid URL format'),
+      }));
+    } else {
+      setAdditionalErrors((prev) => ({ ...prev, [idx]: '' }));
+    }
+  };
+
+  const handleRemoveAdditional = (idx: number) => {
+    setAdditionalImages(additionalImages.filter((_, i) => i !== idx));
+    const newErrors = { ...additionalErrors };
+    delete newErrors[idx];
+    setAdditionalErrors(newErrors);
+  };
+
+  const handleSetAsPrimary = (idx: number) => {
+    const newPrimary = additionalImages[idx];
+    if (!newPrimary) return;
+    const oldPrimary = primaryImageUrl;
+    const updated = [...additionalImages];
+    updated[idx] = oldPrimary;
+    setPrimaryImageUrl(newPrimary);
+    setAdditionalImages(updated);
+    setPrimaryError(null);
+  };
+
+  const handleMoveUp = (idx: number) => {
+    if (idx === 0) {
+      handleSetAsPrimary(0);
+      return;
+    }
+    const updated = [...additionalImages];
+    const temp = updated[idx];
+    updated[idx] = updated[idx - 1];
+    updated[idx - 1] = temp;
+    setAdditionalImages(updated);
+  };
+
+  const handleMoveDown = (idx: number) => {
+    if (idx >= additionalImages.length - 1) return;
+    const updated = [...additionalImages];
+    const temp = updated[idx];
+    updated[idx] = updated[idx + 1];
+    updated[idx + 1] = temp;
+    setAdditionalImages(updated);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -231,29 +337,86 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({ productId }) =
       return;
     }
 
+    // Validate Primary Image URL
+    if (!primaryImageUrl.trim()) {
+      setFeedback({ type: 'error', message: 'Primary product image URL is required.' });
+      return;
+    }
+    const primVal = validateProductImageUrl(primaryImageUrl.trim());
+    if (!primVal.isValid) {
+      setFeedback({ type: 'error', message: `Primary image error: ${primVal.error || 'Invalid URL'}` });
+      return;
+    }
+
+    // Validate any non-empty additional image URLs
+    const validAdditional: string[] = [];
+    for (let i = 0; i < additionalImages.length; i++) {
+      const u = additionalImages[i].trim();
+      if (u) {
+        const valRes = validateProductImageUrl(u);
+        if (!valRes.isValid) {
+          setFeedback({
+            type: 'error',
+            message: `Gallery image #${i + 2} error: ${valRes.error || 'Invalid URL'}`,
+          });
+          return;
+        }
+        validAdditional.push(u);
+      }
+    }
+
     setSaving(true);
 
     const productImages = [
-      { id: 'img-prim', url: primaryImageUrl, alt: `${name} primary view`, isPrimary: true, order: 1 },
-      ...additionalImages.map((url, i) => ({
+      { id: 'img-prim', url: primaryImageUrl.trim(), alt: `${name} primary view`, isPrimary: true, order: 1 },
+      ...validAdditional.map((url, i) => ({
         id: `img-add-${i}`,
         url,
-        alt: `${name} view ${i + 2}`,
+        alt: `${name} gallery view ${i + 2}`,
         isPrimary: false,
         order: i + 2,
       })),
     ];
 
+    // Validate variants if any were created
+    for (let i = 0; i < variants.length; i++) {
+      const v = variants[i];
+      if (!v.name.trim()) {
+        setSaving(false);
+        setFeedback({
+          type: 'error',
+          message: `Variant #${i + 1} requires an option title (e.g. 55-Inch or 1TB SSD).`,
+        });
+        return;
+      }
+      if (typeof v.price !== 'number' || isNaN(v.price) || v.price < 0) {
+        setSaving(false);
+        setFeedback({
+          type: 'error',
+          message: `Variant #${i + 1} (${v.name}) must have a valid non-negative price amount.`,
+        });
+        return;
+      }
+      if (typeof v.stockQuantity !== 'number' || isNaN(v.stockQuantity) || v.stockQuantity < 0) {
+        setSaving(false);
+        setFeedback({
+          type: 'error',
+          message: `Variant #${i + 1} (${v.name}) must have a valid non-negative inventory count.`,
+        });
+        return;
+      }
+    }
+
     const payload: ProductFormInput = {
       name: name.trim(),
       slug: slug.trim() || name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
       category,
-      subcategory: subcategory.trim() || undefined,
+      subcategory: subcategory.trim() ? subcategory.trim() : undefined,
       brand: brand.trim(),
       sku: sku.trim(),
       price: numericPrice,
       currency,
-      discountPrice: discountPrice ? Number(discountPrice) : undefined,
+      discountPrice: discountPrice ? Number(discountPrice) : isEditing ? (null as unknown as number) : undefined,
       stockQuantity: numericStock,
       availabilityStatus: numericStock === 0 ? 'OUT_OF_STOCK' : availabilityStatus,
       productStatus,
@@ -261,7 +424,7 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({ productId }) =
       fullDescription: fullDescription.trim() || shortDescription.trim(),
       productImages,
       specifications: specs.filter((s) => s.label.trim() && s.value.trim()),
-      variants: variants.length > 0 ? variants : undefined,
+      variants: variants.length > 0 ? variants : [], // Clean empty array, NEVER undefined
     };
 
     let res;
@@ -560,23 +723,42 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({ productId }) =
               </div>
             </div>
 
-            {/* Section 3: Product Images */}
-            <div className="bg-[#011B33] border border-[#0682F4]/30 rounded-2xl p-6 sm:p-8 space-y-4 shadow-xl">
-              <div className="pb-3 border-b border-[#0682F4]/20 flex items-center justify-between">
+            {/* Section 3: Product Images (Multi-URL Management with Cloudinary Support) */}
+            <div className="bg-[#011B33] border border-[#0682F4]/30 rounded-2xl p-6 sm:p-8 space-y-6 shadow-xl">
+              <div className="pb-3 border-b border-[#0682F4]/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <ImageIcon className="w-4 h-4 text-[#08E6F9]" />
                   <h3 className="font-display font-bold text-sm text-white uppercase tracking-wider">
                     Product Imagery Assets
                   </h3>
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-[#0682F4]/20 border border-[#0682F4]/40 text-[#08E6F9]">
+                    {1 + additionalImages.length} / {MAX_PRODUCT_IMAGES} Images
+                  </span>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowCloudinaryGuide(!showCloudinaryGuide)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-semibold bg-[#01213D] hover:bg-[#0682F4]/20 border border-[#08E6F9]/40 text-[#08E6F9] hover:text-white transition cursor-pointer self-start sm:self-auto"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" />
+                  <span>{showCloudinaryGuide ? 'Hide Cloudinary Guide' : 'How to Upload & Get URLs'}</span>
+                </button>
               </div>
 
-              {/* Quick Preset Selector */}
-              <div className="space-y-2">
-                <span className="text-[11px] font-mono text-[#CCD2D9]/70 block">
-                  Select Quick Verified Asset (Or Enter Direct URL Below):
-                </span>
-                <div className="flex gap-2 overflow-x-auto pb-2">
+              {/* Cloudinary Guide Drawer / Modal */}
+              {showCloudinaryGuide && (
+                <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+                  <CloudinaryMediaGuide onClose={() => setShowCloudinaryGuide(false)} />
+                </div>
+              )}
+
+              {/* Quick Studio Presets Selector */}
+              <div className="p-4 rounded-xl bg-[#01213D]/60 border border-[#0682F4]/20 space-y-2">
+                <div className="flex items-center justify-between text-[11px] font-mono text-[#CCD2D9]/80">
+                  <span>Quick Verified Studio Assets (Click to apply as primary):</span>
+                </div>
+                <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin">
                   {[
                     { label: 'Smart TV', url: tvImg },
                     { label: 'Studio Laptop', url: laptopImg },
@@ -587,65 +769,239 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({ productId }) =
                     <button
                       key={preset.label}
                       type="button"
-                      onClick={() => setPrimaryImageUrl(preset.url)}
-                      className={`text-xs px-3 py-1.5 rounded-lg border transition-all shrink-0 cursor-pointer ${
+                      onClick={() => handlePrimaryUrlChange(preset.url)}
+                      className={`text-xs px-3 py-1.5 rounded-lg border transition-all shrink-0 cursor-pointer flex items-center gap-1.5 ${
                         primaryImageUrl === preset.url
                           ? 'bg-[#0682F4]/20 border-[#08E6F9] text-[#08E6F9] font-bold'
-                          : 'bg-[#01213D] border-[#0682F4]/20 text-[#CCD2D9]'
+                          : 'bg-[#011B33] border-[#0682F4]/20 text-[#CCD2D9] hover:text-white'
                       }`}
                     >
-                      {preset.label}
+                      <span>{preset.label}</span>
                     </button>
                   ))}
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-mono text-[#CCD2D9] mb-1.5">
-                  Primary Image URL *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={primaryImageUrl}
-                  onChange={(e) => setPrimaryImageUrl(e.target.value)}
-                  placeholder="Asset URL"
-                  className="w-full bg-[#01213D] text-white text-xs sm:text-sm px-3.5 py-2.5 rounded-lg border border-[#0682F4]/30 focus:border-[#08E6F9] focus:outline-none font-mono"
-                />
-              </div>
-
-              {/* Additional Images */}
-              <div className="space-y-2 pt-2">
-                <label className="block text-xs font-mono text-[#CCD2D9]">
-                  Additional Gallery Images
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={newImageUrl}
-                    onChange={(e) => setNewImageUrl(e.target.value)}
-                    placeholder="Enter secondary image URL"
-                    className="flex-1 bg-[#01213D] text-white text-xs px-3.5 py-2 rounded-lg border border-[#0682F4]/30 focus:border-[#08E6F9] focus:outline-none font-mono"
-                  />
-                  <Button type="button" variant="secondary" size="sm" onClick={handleAddImage}>
-                    <span>Add</span>
-                  </Button>
+              {/* Primary Image Field with Live Preview */}
+              <div className="p-4 sm:p-5 rounded-xl bg-[#01213D] border border-[#0682F4]/40 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-mono font-bold text-white flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-[#08E6F9]" />
+                    <span>Primary Product Image URL *</span>
+                  </label>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#0682F4]/20 text-[#08E6F9] border border-[#0682F4]/30 font-bold uppercase">
+                    Catalog Card &amp; Main Hero
+                  </span>
                 </div>
 
-                {additionalImages.length > 0 && (
-                  <div className="flex gap-2 flex-wrap pt-2">
-                    {additionalImages.map((imgUrl, i) => (
-                      <div key={i} className="relative w-16 h-12 rounded-lg overflow-hidden border border-[#0682F4]/30 group">
-                        <img src={imgUrl} alt="" className="w-full h-full object-cover" />
-                        <button
-                          type="button"
-                          onClick={() => setAdditionalImages(additionalImages.filter((_, idx) => idx !== i))}
-                          className="absolute inset-0 bg-red-900/80 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                <div className="flex flex-col sm:flex-row gap-4 items-start">
+                  <div className="flex-1 w-full space-y-2">
+                    <input
+                      type="text"
+                      required
+                      value={primaryImageUrl}
+                      onChange={(e) => handlePrimaryUrlChange(e.target.value)}
+                      placeholder="https://res.cloudinary.com/your-cloud/image/upload/v1/product.jpg"
+                      className={`w-full bg-[#011B33] text-white text-xs sm:text-sm px-3.5 py-2.5 rounded-lg border font-mono transition ${
+                        primaryError
+                          ? 'border-red-500 focus:border-red-400 focus:outline-none'
+                          : 'border-[#0682F4]/30 focus:border-[#08E6F9] focus:outline-none'
+                      }`}
+                    />
+                    {primaryError && (
+                      <div className="flex items-center gap-1.5 text-xs text-red-400">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        <span>{primaryError}</span>
                       </div>
-                    ))}
+                    )}
+                    {primaryImageUrl && !primaryError && (
+                      <span className="text-[11px] font-mono text-emerald-400 flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Valid secure image URL format</span>
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Primary Thumbnail Preview */}
+                  <div className="relative w-28 h-20 sm:w-32 sm:h-24 rounded-xl overflow-hidden bg-[#011629] border border-[#0682F4]/40 shrink-0 flex items-center justify-center">
+                    {primaryImageUrl && !failedPreviews[primaryImageUrl] ? (
+                      <img
+                        src={primaryImageUrl}
+                        alt="Primary Preview"
+                        referrerPolicy="no-referrer"
+                        onError={() =>
+                          setFailedPreviews((prev) => ({ ...prev, [primaryImageUrl]: true }))
+                        }
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="text-center p-2 text-[#CCD2D9]/40 font-mono text-[10px]">
+                        {failedPreviews[primaryImageUrl] ? (
+                          <span className="text-amber-400">Preview Unreachable</span>
+                        ) : (
+                          <span>No Preview</span>
+                        )}
+                      </div>
+                    )}
+                    <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-[#01213D]/90 text-[9px] font-mono text-[#08E6F9] font-bold">
+                      Primary
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Additional Image URLs List */}
+              <div className="space-y-4 pt-2">
+                <div className="flex items-center justify-between border-b border-[#0682F4]/20 pb-2">
+                  <div>
+                    <h4 className="text-xs font-mono font-bold text-white uppercase tracking-wider">
+                      Additional Gallery Images
+                    </h4>
+                    <span className="text-[11px] text-[#CCD2D9]/70">
+                      Customers can browse between all images in the product detail view gallery.
+                    </span>
+                  </div>
+
+                  {1 + additionalImages.length < MAX_PRODUCT_IMAGES && (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleAddImageField}
+                      className="text-xs"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add Another Image</span>
+                    </Button>
+                  )}
+                </div>
+
+                {additionalImages.length === 0 ? (
+                  <div className="p-6 rounded-xl bg-[#01213D]/40 border border-dashed border-[#0682F4]/30 text-center space-y-2">
+                    <ImageIcon className="w-6 h-6 text-[#0682F4]/50 mx-auto" />
+                    <p className="text-xs text-[#CCD2D9]">
+                      No additional gallery images added yet. You can add up to {MAX_PRODUCT_IMAGES - 1} more images.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleAddImageField}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#0682F4]/20 hover:bg-[#0682F4]/30 border border-[#0682F4]/40 text-[#08E6F9] transition cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Add Another Image URL</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {additionalImages.map((imgUrl, idx) => {
+                      const err = additionalErrors[idx];
+                      const isFailed = failedPreviews[imgUrl];
+                      return (
+                        <div
+                          key={idx}
+                          className="p-3.5 rounded-xl bg-[#01213D] border border-[#0682F4]/30 flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between"
+                        >
+                          {/* Live Thumbnail */}
+                          <div className="relative w-16 h-12 rounded-lg overflow-hidden bg-[#011629] border border-[#0682F4]/30 shrink-0 flex items-center justify-center">
+                            {imgUrl && !isFailed ? (
+                              <img
+                                src={imgUrl}
+                                alt={`Gallery view ${idx + 2}`}
+                                referrerPolicy="no-referrer"
+                                onError={() =>
+                                  setFailedPreviews((prev) => ({ ...prev, [imgUrl]: true }))
+                                }
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <span className="text-[9px] font-mono text-[#CCD2D9]/40 text-center p-1">
+                                {isFailed ? 'Error' : `#${idx + 2}`}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* URL Input */}
+                          <div className="flex-1 w-full space-y-1">
+                            <div className="flex items-center justify-between text-[10px] font-mono text-[#CCD2D9]">
+                              <span>Gallery Image #{idx + 2}</span>
+                              {imgUrl.includes('cloudinary.com') && (
+                                <span className="text-[#08E6F9]">Cloudinary Asset</span>
+                              )}
+                            </div>
+                            <input
+                              type="text"
+                              value={imgUrl}
+                              onChange={(e) => handleAdditionalUrlChange(idx, e.target.value)}
+                              placeholder="https://res.cloudinary.com/your-cloud/image/upload/v1/gallery-photo.jpg"
+                              className={`w-full bg-[#011B33] text-white text-xs px-3 py-2 rounded-lg border font-mono transition ${
+                                err
+                                  ? 'border-red-500 focus:border-red-400 focus:outline-none'
+                                  : 'border-[#0682F4]/30 focus:border-[#08E6F9] focus:outline-none'
+                              }`}
+                            />
+                            {err && (
+                              <span className="text-[10px] text-red-400 block">{err}</span>
+                            )}
+                          </div>
+
+                          {/* Image Action Controls */}
+                          <div className="flex items-center gap-1 shrink-0 pt-1 sm:pt-0 self-end sm:self-center">
+                            <button
+                              type="button"
+                              onClick={() => handleSetAsPrimary(idx)}
+                              className="px-2 py-1.5 rounded-lg bg-[#011B33] hover:bg-[#0682F4]/20 border border-[#0682F4]/30 text-[#08E6F9] text-xs font-mono flex items-center gap-1 transition cursor-pointer"
+                              title="Designate as primary image"
+                            >
+                              <Star className="w-3 h-3" />
+                              <span className="hidden md:inline">Make Primary</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleMoveUp(idx)}
+                              className="p-1.5 rounded-lg bg-[#011B33] hover:bg-[#0682F4]/20 border border-[#0682F4]/30 text-[#CCD2D9] hover:text-white transition cursor-pointer"
+                              title="Move up in gallery order"
+                            >
+                              <ArrowUp className="w-3.5 h-3.5" />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleMoveDown(idx)}
+                              disabled={idx >= additionalImages.length - 1}
+                              className="p-1.5 rounded-lg bg-[#011B33] hover:bg-[#0682F4]/20 border border-[#0682F4]/30 text-[#CCD2D9] hover:text-white transition cursor-pointer disabled:opacity-30"
+                              title="Move down in gallery order"
+                            >
+                              <ArrowDown className="w-3.5 h-3.5" />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveAdditional(idx)}
+                              className="p-1.5 rounded-lg bg-[#011B33] hover:bg-rose-500/20 border border-[#0682F4]/30 text-rose-400 transition cursor-pointer"
+                              title="Remove image URL"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {1 + additionalImages.length < MAX_PRODUCT_IMAGES && (
+                      <div className="pt-2">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={handleAddImageField}
+                          className="w-full text-xs py-2"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Add Another Image ({1 + additionalImages.length} of {MAX_PRODUCT_IMAGES})</span>
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -695,7 +1051,126 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({ productId }) =
               </div>
             </div>
 
-            {/* Section 5: Publishing Status & Submission */}
+            {/* Section 5: Product Options & Variants (Optional) */}
+            <div className="bg-[#011B33] border border-[#0682F4]/30 rounded-2xl p-6 sm:p-8 space-y-4 shadow-xl">
+              <div className="pb-3 border-b border-[#0682F4]/20 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Boxes className="w-4 h-4 text-[#08E6F9]" />
+                  <h3 className="font-display font-bold text-sm text-white uppercase tracking-wider">
+                    Product Options &amp; Variants
+                  </h3>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#0682F4]/20 border border-[#0682F4]/40 text-[#08E6F9]">
+                    {variants.length} {variants.length === 1 ? 'Variant' : 'Variants'}
+                  </span>
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleAddVariant}
+                  className="text-xs"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>Add Variant</span>
+                </Button>
+              </div>
+
+              {variants.length === 0 ? (
+                <div className="p-4 rounded-xl bg-[#01213D]/60 border border-[#0682F4]/20 text-center">
+                  <p className="text-xs text-[#CCD2D9]/70">
+                    No SKU variants configured. This product will be published as a single standard hardware item.
+                  </p>
+                  <p className="text-[11px] font-mono text-[#08E6F9] mt-1">
+                    Click &quot;Add Variant&quot; above if this product offers multiple sizes, capacities, or colors.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {variants.map((v, idx) => (
+                    <div
+                      key={v.variantId || idx}
+                      className="p-4 rounded-xl bg-[#01213D] border border-[#0682F4]/30 space-y-3"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-mono font-bold text-[#08E6F9]">
+                          Variant #{idx + 1}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveVariant(idx)}
+                          className="text-rose-400 hover:text-rose-300 text-xs flex items-center gap-1 cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Remove</span>
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                        <div>
+                          <label className="block text-[11px] font-mono text-[#CCD2D9] mb-1">
+                            Option Title *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={v.name}
+                            onChange={(e) => handleVariantChange(idx, 'name', e.target.value)}
+                            placeholder="e.g. 65-Inch or 1TB SSD"
+                            className="w-full bg-[#011B33] text-white text-xs px-3 py-2 rounded-lg border border-[#0682F4]/30 focus:border-[#08E6F9] focus:outline-none font-mono"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-mono text-[#CCD2D9] mb-1">
+                            Variant SKU *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={v.sku}
+                            onChange={(e) => handleVariantChange(idx, 'sku', e.target.value)}
+                            placeholder="SKU-VAR-01"
+                            className="w-full bg-[#011B33] text-white text-xs px-3 py-2 rounded-lg border border-[#0682F4]/30 focus:border-[#08E6F9] focus:outline-none font-mono"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-mono text-[#CCD2D9] mb-1">
+                            Price ({currency}) *
+                          </label>
+                          <input
+                            type="number"
+                            required
+                            min={0}
+                            value={v.price}
+                            onChange={(e) => handleVariantChange(idx, 'price', e.target.value)}
+                            placeholder="Price"
+                            className="w-full bg-[#011B33] text-white text-xs px-3 py-2 rounded-lg border border-[#0682F4]/30 focus:border-[#08E6F9] focus:outline-none font-mono"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-mono text-[#CCD2D9] mb-1">
+                            Stock Units *
+                          </label>
+                          <input
+                            type="number"
+                            required
+                            min={0}
+                            value={v.stockQuantity}
+                            onChange={(e) => handleVariantChange(idx, 'stockQuantity', e.target.value)}
+                            placeholder="Stock"
+                            className="w-full bg-[#011B33] text-white text-xs px-3 py-2 rounded-lg border border-[#0682F4]/30 focus:border-[#08E6F9] focus:outline-none font-mono"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Section 6: Publishing Status & Submission */}
             <div className="bg-[#011B33] border border-[#0682F4]/30 rounded-2xl p-6 sm:p-8 space-y-4 shadow-xl">
               <div className="pb-3 border-b border-[#0682F4]/20 flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-[#08E6F9]" />

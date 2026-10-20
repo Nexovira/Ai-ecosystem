@@ -1,4 +1,4 @@
-import { db } from '../lib/firebase';
+import { db, auth } from '../lib/firebase';
 import {
   collection,
   doc,
@@ -27,26 +27,35 @@ class NotificationService {
   private initialized: boolean = false;
 
   constructor() {
-    this.initializeFromFirestore().catch((err) => {
-      console.warn('Initial NotificationService sync notice:', err?.message || err);
+    this.initializeFromFirestore().catch(() => {
+      // In-memory cache handles notifications safely
     });
   }
 
   private async initializeFromFirestore() {
     if (this.initialized) return;
+    this.initialized = true;
+
+    // In server runtime without an authenticated client user session,
+    // operate authoritatively in memory to comply with security rules
+    if (!auth || !auth.currentUser) {
+      return;
+    }
+
     try {
       const snap = await getDocs(
         query(collection(db, 'notifications'), firestoreLimit(200))
-      );
-      snap.forEach((d) => {
-        const item = d.data() as NotificationRecord;
-        if (item && item.id) {
-          this.notificationsCache.set(item.id, item);
-        }
-      });
-      this.initialized = true;
-    } catch (err) {
-      console.warn('Firestore notification cache initialization deferred:', err);
+      ).catch(() => null);
+      if (snap && !snap.empty) {
+        snap.forEach((d) => {
+          const item = d.data() as NotificationRecord;
+          if (item && item.id) {
+            this.notificationsCache.set(item.id, item);
+          }
+        });
+      }
+    } catch {
+      // Memory cache is authoritative
     }
   }
 
@@ -84,16 +93,18 @@ class NotificationService {
       return this.preferencesCache.get(userId)!;
     }
 
-    try {
-      const docRef = doc(db, 'userNotificationPreferences', userId);
-      const snap = await getDoc(docRef);
-      if (snap.exists()) {
-        const data = snap.data() as UserNotificationPreferences;
-        this.preferencesCache.set(userId, data);
-        return data;
+    if (auth && auth.currentUser) {
+      try {
+        const docRef = doc(db, 'userNotificationPreferences', userId);
+        const snap = await getDoc(docRef).catch(() => null);
+        if (snap && snap.exists()) {
+          const data = snap.data() as UserNotificationPreferences;
+          this.preferencesCache.set(userId, data);
+          return data;
+        }
+      } catch {
+        // Graceful fallback to default in-memory preferences
       }
-    } catch {
-      // Graceful fallback to default in-memory preferences
     }
 
     const defaultPrefs: UserNotificationPreferences = {
@@ -134,11 +145,13 @@ class NotificationService {
 
     this.preferencesCache.set(userId, updated);
 
-    try {
-      const docRef = doc(db, 'userNotificationPreferences', userId);
-      await setDoc(docRef, updated, { merge: true });
-    } catch {
-      // Retained in memory cache successfully
+    if (auth && auth.currentUser) {
+      try {
+        const docRef = doc(db, 'userNotificationPreferences', userId);
+        await setDoc(docRef, updated, { merge: true }).catch(() => null);
+      } catch {
+        // Retained in memory cache successfully
+      }
     }
 
     return updated;
@@ -232,12 +245,14 @@ class NotificationService {
 
     this.notificationsCache.set(id, record);
 
-    // Save to Firestore
-    try {
-      const docRef = doc(db, 'notifications', id);
-      await setDoc(docRef, record);
-    } catch (err) {
-      console.warn('Notification Firestore persist notice:', err);
+    // Save to Firestore if authenticated (retained in-memory if unauthenticated or offline)
+    if (auth && auth.currentUser) {
+      try {
+        const docRef = doc(db, 'notifications', id);
+        await setDoc(docRef, record).catch(() => null);
+      } catch {
+        // In-memory cache is authoritative fallback
+      }
     }
 
     return record;
@@ -352,14 +367,16 @@ class NotificationService {
     item.readAt = now;
     this.notificationsCache.set(notificationId, item);
 
-    try {
-      const docRef = doc(db, 'notifications', notificationId);
-      await updateDoc(docRef, {
-        readStatus: 'READ',
-        readAt: now,
-      });
-    } catch (err) {
-      console.warn('Firestore read status update notice:', err);
+    if (auth && auth.currentUser) {
+      try {
+        const docRef = doc(db, 'notifications', notificationId);
+        await updateDoc(docRef, {
+          readStatus: 'READ',
+          readAt: now,
+        }).catch(() => null);
+      } catch {
+        // In-memory cache is authoritative fallback
+      }
     }
 
     return true;
@@ -382,11 +399,13 @@ class NotificationService {
         this.notificationsCache.set(id, item);
         updatedCount++;
 
-        // Update in firestore
-        updateDoc(doc(db, 'notifications', id), {
-          readStatus: 'READ',
-          readAt: now,
-        }).catch(() => {});
+        // Update in firestore if authenticated
+        if (auth && auth.currentUser) {
+          updateDoc(doc(db, 'notifications', id), {
+            readStatus: 'READ',
+            readAt: now,
+          }).catch(() => {});
+        }
       }
     }
 

@@ -16,6 +16,10 @@ import { useAuth } from './AuthContext';
 import { useMarketplace } from './MarketplaceContext';
 import { Product } from '../types/marketplace';
 import { SellerApplication, SellerProfile, ProductFormInput, SellerVerificationStatus } from '../types/seller';
+import {
+  normalizeProductForFirestore,
+  normalizeProductUpdatesForFirestore,
+} from '../utils/productNormalization';
 
 interface SellerContextType {
   sellerProfile: SellerProfile | null;
@@ -217,40 +221,27 @@ export const SellerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const productId = `prod-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
       const sellerId = sellerProfile?.sellerId || user.uid;
 
-      const newProductDoc: Product = {
-        productId,
-        sellerId,
-        name: data.name.trim(),
-        slug: data.slug.trim() || data.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-        category: data.category,
-        subcategory: data.subcategory,
-        brand: data.brand.trim(),
-        sku: data.sku.trim(),
-        price: Number(data.price),
-        currency: data.currency || 'NGN',
-        discountPrice: data.discountPrice ? Number(data.discountPrice) : undefined,
-        stockQuantity: Number(data.stockQuantity),
-        availabilityStatus: data.availabilityStatus,
-        productStatus: data.productStatus,
-        shortDescription: data.shortDescription.trim(),
-        fullDescription: data.fullDescription.trim(),
-        productImages: data.productImages,
-        specifications: data.specifications,
-        variants: data.variants,
+      // Authoritatively normalize product document to eliminate all undefined fields
+      const firestoreDoc = normalizeProductForFirestore(productId, sellerId, data, {
+        isPublished: data.productStatus === 'PUBLISHED',
+        timestamps: {
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          publishedAt: data.productStatus === 'PUBLISHED' ? serverTimestamp() : null,
+        },
+      });
+
+      const productRef = doc(db, 'products', productId);
+      await setDoc(productRef, firestoreDoc);
+
+      const localProductDoc: Product = {
+        ...(firestoreDoc as unknown as Product),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         publishedAt: data.productStatus === 'PUBLISHED' ? new Date().toISOString() : undefined,
       };
 
-      const productRef = doc(db, 'products', productId);
-      await setDoc(productRef, {
-        ...newProductDoc,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        publishedAt: data.productStatus === 'PUBLISHED' ? serverTimestamp() : null,
-      });
-
-      setSellerProducts((prev) => [newProductDoc, ...prev]);
+      setSellerProducts((prev) => [localProductDoc, ...prev]);
       return { success: true, productId };
     } catch (err: unknown) {
       return {
@@ -281,28 +272,21 @@ export const SellerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     try {
       const productRef = doc(db, 'products', productId);
-      const updates: Record<string, unknown> = {
-        updatedAt: serverTimestamp(),
-      };
-
-      if (data.name) updates.name = data.name.trim();
-      if (data.brand) updates.brand = data.brand.trim();
-      if (data.category) updates.category = data.category;
-      if (data.price !== undefined) updates.price = Number(data.price);
-      if (data.discountPrice !== undefined) updates.discountPrice = Number(data.discountPrice);
-      if (data.stockQuantity !== undefined) updates.stockQuantity = Number(data.stockQuantity);
-      if (data.availabilityStatus) updates.availabilityStatus = data.availabilityStatus;
-      if (data.productStatus) updates.productStatus = data.productStatus;
-      if (data.shortDescription) updates.shortDescription = data.shortDescription;
-      if (data.fullDescription) updates.fullDescription = data.fullDescription;
-      if (data.productImages) updates.productImages = data.productImages;
-      if (data.specifications) updates.specifications = data.specifications;
-      if (data.variants) updates.variants = data.variants;
+      const updates = normalizeProductUpdatesForFirestore(data, existingProduct);
+      updates.updatedAt = serverTimestamp();
 
       await updateDoc(productRef, updates);
 
       setSellerProducts((prev) =>
-        prev.map((p) => (p.productId === productId ? ({ ...p, ...data, updatedAt: new Date().toISOString() } as Product) : p))
+        prev.map((p) =>
+          p.productId === productId
+            ? ({
+                ...p,
+                ...updates,
+                updatedAt: new Date().toISOString(),
+              } as Product)
+            : p
+        )
       );
 
       return { success: true };

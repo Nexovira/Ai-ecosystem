@@ -14,6 +14,9 @@ import {
   Share2,
   Check,
   ExternalLink,
+  ChevronLeft,
+  ChevronRight,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { Container } from '../../components/common/Container';
 import { Button } from '../../components/common/Button';
@@ -95,15 +98,26 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ slug }) =>
     );
   }
 
+  const [failedImages, setFailedImages] = useState<Record<number, boolean>>({});
+
   const wishlisted = isWishlisted(product.productId);
   const relatedProducts = getRelatedProducts(product, 3);
   const isAvailable = product.availabilityStatus === 'IN_STOCK' || product.availabilityStatus === 'LOW_STOCK';
 
   const images = product.productImages && product.productImages.length > 0
-    ? product.productImages
+    ? [...product.productImages].sort((a, b) => (a.order || 0) - (b.order || 0))
     : [{ id: 'default', url: '', alt: product.name, isPrimary: true, order: 1 }];
 
   const activeImage = images[selectedImageIndex] || images[0];
+  const isCurrentFailed = Boolean(failedImages[selectedImageIndex]);
+
+  const handlePrevImage = () => {
+    setSelectedImageIndex((prev) => (prev > 0 ? prev - 1 : images.length - 1));
+  };
+
+  const handleNextImage = () => {
+    setSelectedImageIndex((prev) => (prev < images.length - 1 ? prev + 1 : 0));
+  };
 
   const handleAddToCart = () => {
     if (!isAvailable) return;
@@ -159,44 +173,109 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ slug }) =>
             
             {/* Left Column: Image Gallery */}
             <div className="lg:col-span-7 space-y-4">
-              {/* Main Feature Image */}
-              <div className="aspect-[4/3] rounded-2xl bg-[#011B33] border border-[#0682F4]/30 overflow-hidden relative shadow-2xl">
-                {activeImage.url ? (
+              {/* Main Feature Image Container */}
+              <div className="aspect-[4/3] rounded-2xl bg-[#011B33] border border-[#0682F4]/30 overflow-hidden relative shadow-2xl group">
+                {activeImage.url && !isCurrentFailed ? (
                   <img
                     src={activeImage.url}
                     alt={activeImage.alt || product.name}
-                    className="w-full h-full object-cover object-center"
+                    referrerPolicy="no-referrer"
+                    onError={() =>
+                      setFailedImages((prev) => ({ ...prev, [selectedImageIndex]: true }))
+                    }
+                    className="w-full h-full object-cover object-center transition-all duration-300"
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center font-mono text-sm text-[#CCD2D9]/40">
-                    Product Imagery
+                  <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-[#01213D] via-[#011B33] to-[#011629] p-6 text-center">
+                    <ImageIcon className="w-12 h-12 text-[#0682F4]/50 mb-2" />
+                    <span className="font-display font-bold text-sm text-white">{product.name}</span>
+                    <span className="text-xs font-mono text-[#08E6F9] mt-0.5">{product.brand}</span>
+                    <span className="text-[10px] text-[#CCD2D9]/60 font-mono mt-1">
+                      {isCurrentFailed ? 'Image asset temporarily unreachable' : 'Catalog Hardware Imagery'}
+                    </span>
                   </div>
                 )}
 
-                {/* Discount Badge */}
-                {discountPercent && (
-                  <div className="absolute top-4 left-4 px-2.5 py-1 rounded bg-[#0682F4] text-white font-mono font-bold text-xs shadow-md">
-                    -{discountPercent}% Discount
+                {/* Left / Right Navigation Buttons (if multiple images) */}
+                {images.length > 1 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handlePrevImage}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-[#011629]/80 hover:bg-[#0682F4] text-white border border-[#0682F4]/40 transition-all cursor-pointer opacity-80 hover:opacity-100 hover:scale-105"
+                      aria-label="Previous product image"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleNextImage}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-[#011629]/80 hover:bg-[#0682F4] text-white border border-[#0682F4]/40 transition-all cursor-pointer opacity-80 hover:opacity-100 hover:scale-105"
+                      aria-label="Next product image"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </>
+                )}
+
+                {/* Top Badges: Discount & Image Counter */}
+                <div className="absolute top-4 left-4 flex items-center gap-2">
+                  {discountPercent && (
+                    <div className="px-2.5 py-1 rounded bg-[#0682F4] text-white font-mono font-bold text-xs shadow-md">
+                      -{discountPercent}% Discount
+                    </div>
+                  )}
+                  {activeImage.isPrimary && (
+                    <div className="px-2.5 py-1 rounded bg-[#01213D]/90 border border-[#08E6F9]/50 text-[#08E6F9] font-mono font-bold text-[10px] uppercase shadow-md">
+                      Primary View
+                    </div>
+                  )}
+                </div>
+
+                {images.length > 1 && (
+                  <div className="absolute bottom-4 right-4 px-2.5 py-1 rounded-lg bg-[#011629]/80 backdrop-blur-md border border-[#0682F4]/30 text-white font-mono text-[11px] font-bold">
+                    {selectedImageIndex + 1} / {images.length}
                   </div>
                 )}
               </div>
 
               {/* Thumbnails (if multiple images) */}
               {images.length > 1 && (
-                <div className="flex gap-3">
-                  {images.map((img, idx) => (
-                    <button
-                      key={img.id || idx}
-                      onClick={() => setSelectedImageIndex(idx)}
-                      className={`w-20 h-16 rounded-xl bg-[#011B33] border overflow-hidden transition-all cursor-pointer ${
-                        selectedImageIndex === idx
-                          ? 'border-[#08E6F9] ring-2 ring-[#08E6F9]/30'
-                          : 'border-[#0682F4]/20 opacity-70 hover:opacity-100'
-                      }`}
-                    >
-                      <img src={img.url} alt={img.alt} className="w-full h-full object-cover" />
-                    </button>
-                  ))}
+                <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-thin">
+                  {images.map((img, idx) => {
+                    const thumbFailed = failedImages[idx];
+                    return (
+                      <button
+                        key={img.id || idx}
+                        onClick={() => setSelectedImageIndex(idx)}
+                        className={`relative w-20 h-16 rounded-xl bg-[#011B33] border overflow-hidden shrink-0 transition-all cursor-pointer ${
+                          selectedImageIndex === idx
+                            ? 'border-[#08E6F9] ring-2 ring-[#08E6F9]/40 scale-105'
+                            : 'border-[#0682F4]/20 opacity-70 hover:opacity-100'
+                        }`}
+                        title={img.alt || `View image ${idx + 1}`}
+                      >
+                        {img.url && !thumbFailed ? (
+                          <img
+                            src={img.url}
+                            alt={img.alt || ''}
+                            referrerPolicy="no-referrer"
+                            onError={() =>
+                              setFailedImages((prev) => ({ ...prev, [idx]: true }))
+                            }
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center bg-[#011629] text-[#CCD2D9]/40 text-[9px] font-mono">
+                            Img {idx + 1}
+                          </div>
+                        )}
+                        {img.isPrimary && (
+                          <span className="absolute bottom-1 right-1 w-2 h-2 rounded-full bg-[#08E6F9]" title="Primary" />
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>

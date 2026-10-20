@@ -24,7 +24,13 @@ import {
   Loader2,
   ArrowLeft,
   ShieldAlert,
+  Image as ImageIcon,
+  HelpCircle,
+  ExternalLink,
+  Link as LinkIcon,
 } from 'lucide-react';
+import { CloudinaryMediaGuide } from '../../components/seller/CloudinaryMediaGuide';
+import { validateProductImageUrl, validateDeliverableUrl } from '../../utils/imageUrlValidator';
 
 export const SellerDigitalProductsPage: React.FC = () => {
   const { navigate } = useRouter();
@@ -49,7 +55,13 @@ export const SellerDigitalProductsPage: React.FC = () => {
   const [isFree, setIsFree] = useState(false);
   const [shortDescription, setShortDescription] = useState('');
   const [description, setDescription] = useState('');
-  const [coverImage, setCoverImage] = useState('');
+  const [coverImage, setCoverImage] = useState('https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=1000&auto=format&fit=crop');
+  const [coverImageError, setCoverImageError] = useState<string | null>(null);
+  const [coverFailed, setCoverFailed] = useState(false);
+  const [externalFileUrl, setExternalFileUrl] = useState('');
+  const [fileUrlError, setFileUrlError] = useState<string | null>(null);
+  const [samplePdfUrl, setSamplePdfUrl] = useState('');
+  const [showGuide, setShowGuide] = useState(false);
   const [excerptText, setExcerptText] = useState('');
   const [fileName, setFileName] = useState('');
   const [fileType, setFileType] = useState('pdf');
@@ -100,7 +112,12 @@ export const SellerDigitalProductsPage: React.FC = () => {
     setIsFree(false);
     setShortDescription('');
     setDescription('');
-    setCoverImage('');
+    setCoverImage('https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=1000&auto=format&fit=crop');
+    setCoverImageError(null);
+    setCoverFailed(false);
+    setExternalFileUrl('');
+    setFileUrlError(null);
+    setSamplePdfUrl('');
     setExcerptText('');
     setFileName('Publication_Draft.pdf');
     setFileType('pdf');
@@ -119,7 +136,12 @@ export const SellerDigitalProductsPage: React.FC = () => {
     setIsFree(p.isFree);
     setShortDescription(p.shortDescription);
     setDescription(p.description);
-    setCoverImage(p.coverImage);
+    setCoverImage(p.coverImage || '');
+    setCoverImageError(null);
+    setCoverFailed(false);
+    setExternalFileUrl(p.externalFileUrl || '');
+    setFileUrlError(null);
+    setSamplePdfUrl(p.previewInfo?.samplePdfUrl || '');
     setExcerptText(p.previewInfo?.excerptText || '');
     setFileName(p.fileMetadata?.fileName || '');
     setFileType(p.fileMetadata?.fileType || 'pdf');
@@ -129,11 +151,52 @@ export const SellerDigitalProductsPage: React.FC = () => {
     setIsModalOpen(true);
   };
 
+  const handleCoverUrlChange = (val: string) => {
+    setCoverImage(val);
+    setCoverFailed(false);
+    if (val.trim()) {
+      const res = validateProductImageUrl(val);
+      setCoverImageError(res.isValid ? null : (res.error || 'Invalid URL format'));
+    } else {
+      setCoverImageError(null);
+    }
+  };
+
+  const handleExternalFileUrlChange = (val: string) => {
+    setExternalFileUrl(val);
+    if (val.trim()) {
+      const res = validateDeliverableUrl(val);
+      setFileUrlError(res.isValid ? null : (res.error || 'Invalid deliverable URL'));
+    } else {
+      setFileUrlError(null);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
     setSubmitting(true);
     setFeedback(null);
+
+    // Validate Cover Image if provided
+    if (coverImage.trim()) {
+      const cRes = validateProductImageUrl(coverImage.trim());
+      if (!cRes.isValid) {
+        setFeedback({ type: 'error', text: `Cover Image Error: ${cRes.error || 'Invalid URL'}` });
+        setSubmitting(false);
+        return;
+      }
+    }
+
+    // Validate External File URL if provided
+    if (externalFileUrl.trim()) {
+      const fRes = validateDeliverableUrl(externalFileUrl.trim());
+      if (!fRes.isValid) {
+        setFeedback({ type: 'error', text: `Deliverable File URL Error: ${fRes.error || 'Invalid URL'}` });
+        setSubmitting(false);
+        return;
+      }
+    }
 
     const payload: CreateDigitalProductInput = {
       title: title.trim(),
@@ -145,9 +208,11 @@ export const SellerDigitalProductsPage: React.FC = () => {
       isFree,
       productType,
       coverImage: coverImage.trim() || undefined,
+      externalFileUrl: externalFileUrl.trim() || undefined,
       previewInfo: {
         previewType: 'EXCERPT',
         excerptText: excerptText.trim() || undefined,
+        samplePdfUrl: samplePdfUrl.trim() || undefined,
       },
       fileMetadata: {
         fileName: fileName.trim() || 'deliverable.pdf',
@@ -486,6 +551,109 @@ export const SellerDigitalProductsPage: React.FC = () => {
                     <option value="DIGITAL_RESOURCE">Digital Resource Kit</option>
                     <option value="DOCUMENT">Specification Doc</option>
                   </select>
+                </div>
+              </div>
+
+              {/* Media & Deliverable URLs Section */}
+              <div className="p-4 rounded-xl bg-[#011B33] border border-[#0682F4]/40 space-y-3">
+                <div className="flex items-center justify-between border-b border-[#0682F4]/20 pb-2">
+                  <div className="flex items-center gap-2">
+                    <ImageIcon className="w-4 h-4 text-[#08E6F9]" />
+                    <span className="font-bold text-white text-xs">Cover Art &amp; Media Hosting</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowGuide(!showGuide)}
+                    className="text-[#08E6F9] hover:underline flex items-center gap-1 text-[11px] font-mono cursor-pointer"
+                  >
+                    <HelpCircle className="w-3.5 h-3.5" />
+                    <span>{showGuide ? 'Hide Guide' : 'Hosting Guide (Cloudinary & Drive)'}</span>
+                  </button>
+                </div>
+
+                {showGuide && (
+                  <div className="pt-1 pb-2">
+                    <CloudinaryMediaGuide onClose={() => setShowGuide(false)} />
+                  </div>
+                )}
+
+                {/* Cover Image URL */}
+                <div className="flex flex-col sm:flex-row gap-3 items-start">
+                  <div className="flex-1 w-full space-y-1">
+                    <label className="block text-[#CCD2D9] font-semibold text-[11px]">
+                      Publication Cover Image URL (Cloudinary / Direct HTTPS)
+                    </label>
+                    <input
+                      type="text"
+                      value={coverImage}
+                      onChange={(e) => handleCoverUrlChange(e.target.value)}
+                      placeholder="https://res.cloudinary.com/your-cloud/image/upload/v1/cover.jpg"
+                      className={`w-full bg-[#01213D] border rounded-lg p-2 text-white font-mono text-xs focus:outline-none ${
+                        coverImageError ? 'border-red-500' : 'border-[#0682F4]/30 focus:border-[#08E6F9]'
+                      }`}
+                    />
+                    {coverImageError && (
+                      <span className="text-[10px] text-red-400 block">{coverImageError}</span>
+                    )}
+                  </div>
+
+                  {/* Live Cover Preview */}
+                  <div className="relative w-20 h-16 sm:w-24 sm:h-20 rounded-lg overflow-hidden bg-[#011629] border border-[#0682F4]/30 shrink-0 flex items-center justify-center">
+                    {coverImage && !coverFailed ? (
+                      <img
+                        src={coverImage}
+                        alt="Cover preview"
+                        referrerPolicy="no-referrer"
+                        onError={() => setCoverFailed(true)}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-[9px] font-mono text-[#CCD2D9]/40 text-center p-1">
+                        {coverFailed ? 'Unreachable' : 'No Cover'}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* External Deliverable File URL */}
+                <div className="space-y-1 pt-1">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <label className="text-[#CCD2D9] font-semibold flex items-center gap-1.5">
+                      <LinkIcon className="w-3.5 h-3.5 text-[#08E6F9]" />
+                      <span>Deliverable File URL (Google Drive / Cloudinary Raw / Dropbox)</span>
+                    </label>
+                    <span className="text-[#08E6F9] font-mono text-[10px]">Protected Customer Access</span>
+                  </div>
+                  <input
+                    type="text"
+                    value={externalFileUrl}
+                    onChange={(e) => handleExternalFileUrlChange(e.target.value)}
+                    placeholder="https://drive.google.com/file/d/YOUR_FILE_ID/view?usp=sharing"
+                    className={`w-full bg-[#01213D] border rounded-lg p-2 text-white font-mono text-xs focus:outline-none ${
+                      fileUrlError ? 'border-red-500' : 'border-[#0682F4]/30 focus:border-[#08E6F9]'
+                    }`}
+                  />
+                  {fileUrlError ? (
+                    <span className="text-[10px] text-red-400 block">{fileUrlError}</span>
+                  ) : (
+                    <span className="text-[10px] text-[#CCD2D9]/70 block">
+                      When customers purchase this publication, they are redirected to this authoritative file link upon license authorization. Ensure Google Drive links are set to "Anyone with link can view".
+                    </span>
+                  )}
+                </div>
+
+                {/* Sample Excerpt PDF URL */}
+                <div className="space-y-1 pt-1">
+                  <label className="block text-[#CCD2D9] font-semibold text-[11px]">
+                    Sample Preview PDF URL (Optional Public Reader Excerpt)
+                  </label>
+                  <input
+                    type="text"
+                    value={samplePdfUrl}
+                    onChange={(e) => setSamplePdfUrl(e.target.value)}
+                    placeholder="https://res.cloudinary.com/your-cloud/raw/upload/sample-chapter.pdf"
+                    className="w-full bg-[#01213D] border border-[#0682F4]/30 rounded-lg p-2 text-white font-mono text-xs focus:outline-none focus:border-[#08E6F9]"
+                  />
                 </div>
               </div>
 

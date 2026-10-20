@@ -3,6 +3,7 @@ import { useRouter } from '../../context/RouterContext';
 import { useAuth } from '../../context/AuthContext';
 import { useServices } from '../../context/ServicesContext';
 import { Button } from '../../components/common/Button';
+import { ManagementLayout } from '../../components/management/ManagementLayout';
 import { ProjectStatusBadge } from '../../components/services/ProjectStatusBadge';
 import { ProjectRequestStatus, ExpertVerificationStatus, ServiceCategory, ProjectRequest, ExpertProfile } from '../../types/services';
 import {
@@ -187,28 +188,29 @@ export const ManagementServicesPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#01213D] text-white py-12">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between pb-8 border-b border-[#0682F4]/20 gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold tracking-widest text-[#08E6F9] uppercase">
-                Operations Portal
-              </span>
-              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#0682F4]/20 text-[#08E6F9] border border-[#08E6F9]/30">
-                {profile?.role}
-              </span>
-            </div>
-            <h1 className="text-3xl sm:text-4xl font-black text-white tracking-tight mt-1">
-              Tech & Digital Services Management
-            </h1>
-            <p className="text-xs sm:text-sm text-[#CCD2D9] mt-1">
-              Authoritative assignment desk, expert vetting registry, and service catalog management.
-            </p>
-          </div>
-        </div>
-
+    <ManagementLayout
+      activeRoute="/management/services"
+      title="Tech & Digital Services Management"
+      subtitle="Authoritative assignment desk, expert vetting registry, service catalog management, and audit logs."
+      requiredPermission="SERVICES_VIEW"
+      actions={
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => {
+            fetchManagementRequests();
+            fetchManagementExperts();
+            fetchAuditLogs();
+            fetchNotifications();
+          }}
+          className="text-xs"
+        >
+          <Clock className="w-3.5 h-3.5" />
+          <span>Refresh Data</span>
+        </Button>
+      }
+    >
+      <div className="space-y-6">
         {/* Tab Switcher */}
         <div className="my-8 flex flex-wrap gap-3 border-b border-[#0682F4]/20 pb-4">
           <button
@@ -848,6 +850,6 @@ export const ManagementServicesPage: React.FC = () => {
           </div>
         )}
       </div>
-    </div>
+    </ManagementLayout>
   );
 };

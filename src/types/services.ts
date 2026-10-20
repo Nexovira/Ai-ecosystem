@@ -21,6 +21,45 @@ export interface ServiceCategory {
   updatedAt: string;
 }
 
+export type ServiceListingStatus =
+  | 'DRAFT'
+  | 'PENDING_REVIEW'
+  | 'PUBLISHED'
+  | 'UNPUBLISHED'
+  | 'REJECTED'
+  | 'SUSPENDED';
+
+export interface ServiceListing {
+  id: string;
+  listingId: string;
+  title: string;
+  slug: string;
+  categoryId: string;
+  categoryName: string;
+  categorySlug: string;
+  shortDescription: string;
+  description: string;
+  priceStartingFrom: number;
+  currency: string;
+  deliveryDaysEstimate: number;
+  revisionsAllowed: number;
+  deliverables: string[];
+  skills: string[];
+  imageUrl: string;
+  galleryImages?: string[];
+  providerId?: string;
+  providerName?: string;
+  providerRole?: 'EXPERT' | 'MANAGEMENT';
+  status: ServiceListingStatus;
+  isAvailableForBooking: boolean;
+  featured: boolean;
+  orderCount?: number;
+  rating?: number;
+  reviewCount?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ExpertProfile {
   expertId: string;
   userId: string;

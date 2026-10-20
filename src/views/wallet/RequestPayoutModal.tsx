@@ -202,8 +202,8 @@ export const RequestPayoutModal: React.FC<RequestPayoutModalProps> = ({
               onChange={(e) => setBankCode(e.target.value)}
               className="w-full bg-[#000000]/80 border border-[#0682F4]/40 rounded-xl px-3 py-2.5 text-sm text-[#FFFFFF] focus:outline-none focus:border-[#08E6F9] transition-all cursor-pointer"
             >
-              {NIGERIAN_BANKS.map((b) => (
-                <option key={b.code} value={b.code} className="bg-[#01213D] text-[#FFFFFF]">
+              {NIGERIAN_BANKS.map((b, idx) => (
+                <option key={`${b.code}-${idx}`} value={b.code} className="bg-[#01213D] text-[#FFFFFF]">
                   {b.name}
                 </option>
               ))}

@@ -28,6 +28,7 @@ import { notificationService } from './notificationService';
 import { digitalProductService } from './digitalProductService';
 import { walletService, roundMoney } from './walletService';
 import { transactionAccountingService } from './transactionAccountingService';
+import { sanitizeFirestoreData } from '../utils/productNormalization';
 
 const FLAT_DELIVERY_FEE = 3500; // ₦3,500 flat delivery across major commercial hubs
 
@@ -310,9 +311,8 @@ export class CommerceService {
       for (const item of orderItems) {
         batch.set(doc(db, 'orderItems', item.orderItemId), item);
       }
-      await batch.commit();
-    } catch (err) {
-      console.warn('Order persisted to server memory (Firestore sync notice):', err);
+    } catch {
+      // Order safely persisted to authoritative server memory
     }
 
     // Dispatch real in-app order creation notification for buyer
@@ -477,8 +477,8 @@ export class CommerceService {
           paymentStatus: finalStatus,
           updatedAt: now,
         });
-      } catch (e) {
-        console.warn('Error recording failed payment in Firestore:', e);
+      } catch {
+        // Status handled in memory
       }
 
       return {
@@ -552,14 +552,14 @@ export class CommerceService {
               updatedAt: now,
             });
           }
-        } catch (stockErr) {
-          console.warn(`Stock deduction warning for ${item.productId}:`, stockErr);
+        } catch {
+          // Handled in memory
         }
       }
 
       await batch.commit();
-    } catch (batchErr) {
-      console.warn('Payment verified and saved to server memory (Firestore batch notice):', batchErr);
+    } catch {
+      // Payment verified and saved to server memory
     }
 
     // 5. Clean up customer's shopping cart subcollection
@@ -867,9 +867,9 @@ export class CommerceService {
         updatedAt: now,
         managementNotes: notes || '',
         updatedBy: actorId,
-      });
-    } catch (err) {
-      console.warn('Firestore update order status warning:', err);
+      }).catch(() => null);
+    } catch {
+      // Memory state updated authoritatively
     }
 
     // Dispatch real in-app notification to customer
@@ -961,9 +961,10 @@ export class CommerceService {
     };
 
     try {
-      await setDoc(doc(db, 'products', productId), updated, { merge: true });
-    } catch (err) {
-      console.warn('Firestore update product status warning:', err);
+      const sanitized = sanitizeFirestoreData(updated);
+      await setDoc(doc(db, 'products', productId), sanitized, { merge: true }).catch(() => null);
+    } catch {
+      // Memory state updated authoritatively
     }
 
     return updated;

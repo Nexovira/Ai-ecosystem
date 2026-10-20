@@ -140,10 +140,21 @@ export interface PayoutProfile {
   bankName: string;
   bankCode: string;
   accountNumber: string;
+  accountNumberMasked?: string;
   accountName: string;
+  country?: string;
   recipientCode?: string;
   isVerified: boolean;
   verifiedAt?: string;
+}
+
+export interface PaystackBank {
+  name: string;
+  code: string;
+  slug?: string;
+  country?: string;
+  currency?: string;
+  active?: boolean;
 }
 
 export interface PayoutRequest {

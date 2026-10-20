@@ -13,7 +13,6 @@ import { SignInPage } from './views/auth/SignInPage';
 import { RegisterPage } from './views/auth/RegisterPage';
 import { ForgotPasswordPage } from './views/auth/ForgotPasswordPage';
 import { VerifyEmailPage } from './views/auth/VerifyEmailPage';
-import { AdminSetupPage } from './views/auth/AdminSetupPage';
 import { AccountPage } from './views/account/AccountPage';
 import { AccountProfilePage } from './views/account/AccountProfilePage';
 import { AccountSettingsPage } from './views/account/AccountSettingsPage';
@@ -275,9 +274,6 @@ const MainRouterView: React.FC = () => {
     case '/login':
     case '/signin':
       return <SignInPage />;
-
-    case '/admin-setup':
-      return <AdminSetupPage />;
 
     case '/register':
       return <RegisterPage />;

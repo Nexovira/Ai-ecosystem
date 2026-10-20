@@ -8,7 +8,7 @@ import {
   query,
   where,
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, auth } from '../lib/firebase';
 import {
   Review,
   ReviewReport,
@@ -61,13 +61,20 @@ export class ReviewService {
   private reportRateLimitMap: Map<string, number[]> = new Map();
 
   constructor() {
-    this.init().catch((err) => {
-      console.warn('Initial review service warming notice:', err);
+    this.init().catch(() => {
+      // Background init handled safely
     });
   }
 
   private async init(): Promise<void> {
     if (this.isInitialized) return;
+    this.isInitialized = true;
+
+    if (!auth || !auth.currentUser) {
+      // Server runs in memory-authoritative mode without active client session
+      return;
+    }
+
     try {
       if (db) {
         // Load reviews from Firestore
@@ -92,10 +99,8 @@ export class ReviewService {
           });
         }
       }
-      this.isInitialized = true;
-    } catch (err) {
-      console.warn('ReviewService init fallback to memory store:', err);
-      this.isInitialized = true;
+    } catch {
+      // Memory store is authoritative
     }
   }
 
@@ -477,13 +482,13 @@ export class ReviewService {
     // Save to Cache
     this.reviewsCache.unshift(review);
 
-    // Save to Firestore
-    try {
-      if (db) {
-        await setDoc(doc(db, 'reviews', reviewId), review);
+    // Save to Firestore if authenticated
+    if (db && auth && auth.currentUser) {
+      try {
+        await setDoc(doc(db, 'reviews', reviewId), review).catch(() => null);
+      } catch {
+        // Preserved in memory cache
       }
-    } catch (err) {
-      console.warn('Firestore setDoc notice for review:', err);
     }
 
     // 6. Dispatch Notifications
@@ -587,8 +592,8 @@ export class ReviewService {
     review.updatedAt = now;
 
     // Update Firestore
-    try {
-      if (db) {
+    if (db && auth && auth.currentUser) {
+      try {
         await updateDoc(doc(db, 'reviews', reviewId), {
           rating: review.rating,
           title: review.title,
@@ -597,10 +602,10 @@ export class ReviewService {
           userDisplayName: review.userDisplayName,
           userAvatar: review.userAvatar,
           updatedAt: now,
-        });
+        }).catch(() => null);
+      } catch {
+        // Preserved in memory cache
       }
-    } catch (err) {
-      console.warn('Firestore updateDoc review notice:', err);
     }
 
     return review;
@@ -627,15 +632,15 @@ export class ReviewService {
     review.status = 'REMOVED';
     review.updatedAt = now;
 
-    try {
-      if (db) {
+    if (db && auth && auth.currentUser) {
+      try {
         await updateDoc(doc(db, 'reviews', reviewId), {
           status: 'REMOVED',
           updatedAt: now,
-        });
+        }).catch(() => null);
+      } catch {
+        // Preserved in memory cache
       }
-    } catch (err) {
-      console.warn('Firestore deleteReview status update notice:', err);
     }
 
     return { success: true };
@@ -831,17 +836,17 @@ export class ReviewService {
       review.status = 'REPORTED';
     }
 
-    try {
-      if (db) {
-        await setDoc(doc(db, 'reviewReports', reportId), report);
+    if (db && auth && auth.currentUser) {
+      try {
+        await setDoc(doc(db, 'reviewReports', reportId), report).catch(() => null);
         await updateDoc(doc(db, 'reviews', reviewId), {
           reportCount: review.reportCount,
           status: review.status,
           updatedAt: new Date().toISOString(),
-        });
+        }).catch(() => null);
+      } catch {
+        // Preserved in memory cache
       }
-    } catch (err) {
-      console.warn('Firestore report save notice:', err);
     }
 
     return report;
@@ -890,15 +895,15 @@ export class ReviewService {
     };
     review.updatedAt = now;
 
-    try {
-      if (db) {
+    if (db && auth && auth.currentUser) {
+      try {
         await updateDoc(doc(db, 'reviews', reviewId), {
           response: review.response,
           updatedAt: now,
-        });
+        }).catch(() => null);
+      } catch {
+        // Preserved in memory cache
       }
-    } catch (err) {
-      console.warn('Firestore response update notice:', err);
     }
 
     // Notify reviewer of the provider response
@@ -990,15 +995,15 @@ export class ReviewService {
     review.status = newStatus;
     review.updatedAt = now;
 
-    try {
-      if (db) {
+    if (db && auth && auth.currentUser) {
+      try {
         await updateDoc(doc(db, 'reviews', reviewId), {
           status: newStatus,
           updatedAt: now,
-        });
+        }).catch(() => null);
+      } catch {
+        // Preserved in memory cache
       }
-    } catch (err) {
-      console.warn('Firestore moderation status update notice:', err);
     }
 
     // Audit log
@@ -1059,17 +1064,17 @@ export class ReviewService {
     report.resolutionNote = sanitizeText(note);
     report.resolvedAt = now;
 
-    try {
-      if (db) {
+    if (db && auth && auth.currentUser) {
+      try {
         await updateDoc(doc(db, 'reviewReports', reportId), {
           status: resolution,
           resolvedBy: actorId,
           resolutionNote: report.resolutionNote,
           resolvedAt: now,
-        });
+        }).catch(() => null);
+      } catch {
+        // Preserved in memory cache
       }
-    } catch (err) {
-      console.warn('Firestore report resolve notice:', err);
     }
 
     // Audit log

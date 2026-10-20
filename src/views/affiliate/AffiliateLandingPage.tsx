@@ -19,7 +19,7 @@ import {
 export const AffiliateLandingPage: React.FC = () => {
   const { navigate } = useRouter();
   const { user } = useAuth();
-  const { affiliateStatus, isLoading } = useAffiliate();
+  const { affiliateStatus, profile, isLoading } = useAffiliate();
 
   const handleCtaClick = () => {
     if (!user) {
@@ -28,7 +28,11 @@ export const AffiliateLandingPage: React.FC = () => {
     }
 
     if (affiliateStatus === 'APPROVED') {
-      navigate('/affiliate/dashboard');
+      if (!profile?.payoutProfile?.isVerified) {
+        navigate('/affiliate/payout');
+      } else {
+        navigate('/affiliate/dashboard');
+      }
     } else if (affiliateStatus === 'PENDING_REVIEW') {
       navigate('/affiliate/apply');
     } else {
@@ -69,10 +73,17 @@ export const AffiliateLandingPage: React.FC = () => {
                 className="w-full sm:w-auto px-8 py-4 rounded-xl font-bold text-white bg-gradient-to-r from-[#01213D] via-[#0682F4] to-[#06C3F8] hover:from-[#0682F4] hover:to-[#08E6F9] shadow-lg shadow-[#0682F4]/25 transition duration-200 flex items-center justify-center gap-2 text-base cursor-pointer"
               >
                 {affiliateStatus === 'APPROVED' ? (
-                  <>
-                    Go to Affiliate Dashboard
-                    <ArrowRight className="w-5 h-5" />
-                  </>
+                  !profile?.payoutProfile?.isVerified ? (
+                    <>
+                      Verify Bank to Activate Dashboard
+                      <ArrowRight className="w-5 h-5" />
+                    </>
+                  ) : (
+                    <>
+                      Go to Affiliate Dashboard
+                      <ArrowRight className="w-5 h-5" />
+                    </>
+                  )
                 ) : affiliateStatus === 'PENDING_REVIEW' ? (
                   <>
                     View Application Status

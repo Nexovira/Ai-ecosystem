@@ -13,7 +13,9 @@ import {
   Building,
   Users,
   Globe,
+  RefreshCw,
 } from 'lucide-react';
+import { AffiliateOnboardingChecklist } from '../../components/affiliate/AffiliateOnboardingChecklist';
 
 const PROMOTION_CHANNEL_OPTIONS = [
   'Tech Blog / Industry Website',
@@ -37,7 +39,7 @@ const PREFERRED_CATEGORIES = [
 export const AffiliateApplyPage: React.FC = () => {
   const { currentPath, navigate } = useRouter();
   const { user } = useAuth();
-  const { affiliateStatus, application, applyForProgram, isLoading } = useAffiliate();
+  const { affiliateStatus, profile, application, applyForProgram, refreshAffiliateState, isLoading } = useAffiliate();
 
   const [fullName, setFullName] = useState(user?.displayName || '');
   const [email, setEmail] = useState(user?.email || '');
@@ -145,23 +147,67 @@ export const AffiliateApplyPage: React.FC = () => {
 
   // State 2: Already Approved
   if (affiliateStatus === 'APPROVED') {
+    const isPayoutVerified = Boolean(profile?.payoutProfile?.isVerified);
+
     return (
-      <div className="min-h-screen bg-[#000000] text-white flex items-center justify-center p-4">
-        <div className="max-w-lg w-full p-8 rounded-2xl bg-[#01213D]/40 border border-[#0682F4]/50 text-center">
-          <div className="w-16 h-16 rounded-2xl bg-[#0682F4]/20 text-[#08E6F9] mx-auto flex items-center justify-center mb-6">
-            <CheckCircle className="w-8 h-8" />
-          </div>
-          <h2 className="text-2xl font-extrabold mb-2">You Are an Approved Affiliate!</h2>
-          <p className="text-sm text-[#CCD2D9] mb-8 leading-relaxed">
-            Your affiliate account is currently active. You can generate custom referral links, track visitor clicks, inspect pending commissions, and request payouts.
-          </p>
-          <button
-            onClick={() => navigate('/affiliate/dashboard')}
-            className="w-full py-3.5 px-6 rounded-xl font-bold text-white bg-gradient-to-r from-[#01213D] via-[#0682F4] to-[#08E6F9] hover:from-[#0682F4] hover:to-[#08E6F9] shadow-lg shadow-[#0682F4]/20 transition cursor-pointer flex items-center justify-center gap-2"
-          >
-            Launch Affiliate Dashboard
-            <ArrowRight className="w-5 h-5" />
-          </button>
+      <div className="min-h-screen bg-[#000000] text-white py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-2xl mx-auto space-y-6">
+          {!isPayoutVerified ? (
+            <AffiliateOnboardingChecklist
+              onSetupClick={() => navigate('/affiliate/payout')}
+              showActions={true}
+            />
+          ) : (
+            <div className="p-8 rounded-2xl bg-[#01213D]/40 border border-[#0682F4]/50 text-center space-y-6">
+              <div className="w-16 h-16 rounded-2xl bg-[#0682F4]/20 text-[#08E6F9] mx-auto flex items-center justify-center">
+                <CheckCircle className="w-8 h-8" />
+              </div>
+              <div>
+                <span className="px-3 py-1 rounded-full bg-[#0682F4]/20 border border-[#0682F4]/40 text-[#08E6F9] text-xs font-bold uppercase tracking-wider">
+                  Application Accepted & Active
+                </span>
+                <h2 className="text-2xl font-extrabold mt-3 mb-2">You Are an Approved Affiliate Partner!</h2>
+                <p className="text-sm text-[#CCD2D9] max-w-md mx-auto leading-relaxed">
+                  Your partner profile is fully active with a verified settlement bank account. Your promotional links are live and actively tracking sales.
+                </p>
+              </div>
+
+              {application && (
+                <div className="text-left bg-[#000000]/50 rounded-xl p-4 border border-[#2B7EB5]/20 text-xs space-y-2 max-w-md mx-auto">
+                  <div className="flex justify-between border-b border-[#2B7EB5]/10 pb-2">
+                    <span className="text-[#CCD2D9]">Approval Date:</span>
+                    <span className="font-semibold text-white">
+                      {new Date(application.reviewedDate || application.updatedAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <div className="flex justify-between border-b border-[#2B7EB5]/10 pb-2">
+                    <span className="text-[#CCD2D9]">Affiliate Code:</span>
+                    <span className="font-mono font-bold text-[#08E6F9]">{profile?.affiliateCode}</span>
+                  </div>
+                  <div className="flex justify-between pt-1">
+                    <span className="text-[#CCD2D9]">Payout Destination:</span>
+                    <span className="font-semibold text-white">{profile?.payoutProfile?.bankName}</span>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                <button
+                  onClick={() => navigate('/affiliate/dashboard')}
+                  className="flex-1 py-3.5 px-6 rounded-xl font-bold text-white bg-gradient-to-r from-[#01213D] via-[#0682F4] to-[#08E6F9] hover:from-[#0682F4] hover:to-[#08E6F9] shadow-lg shadow-[#0682F4]/20 transition cursor-pointer flex items-center justify-center gap-2"
+                >
+                  Launch Affiliate Dashboard
+                  <ArrowRight className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={() => navigate('/affiliate/offers')}
+                  className="py-3.5 px-6 rounded-xl font-semibold text-xs text-[#CCD2D9] bg-[#01213D] hover:text-white border border-[#2B7EB5]/30 transition cursor-pointer"
+                >
+                  Eligible Offers
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -186,7 +232,7 @@ export const AffiliateApplyPage: React.FC = () => {
           </p>
 
           {application && (
-            <div className="text-left bg-[#000000]/50 rounded-xl p-5 mb-8 border border-[#2B7EB5]/20 text-xs space-y-2">
+            <div className="text-left bg-[#000000]/50 rounded-xl p-5 mb-6 border border-[#2B7EB5]/20 text-xs space-y-2">
               <div className="flex justify-between border-b border-[#2B7EB5]/10 pb-2">
                 <span className="text-[#CCD2D9]">Applicant:</span>
                 <span className="font-semibold text-white">{application.fullName}</span>
@@ -212,16 +258,17 @@ export const AffiliateApplyPage: React.FC = () => {
 
           <div className="flex flex-col sm:flex-row gap-3">
             <button
-              onClick={() => navigate('/affiliate')}
-              className="flex-1 py-3 px-4 rounded-xl text-sm font-medium text-[#CCD2D9] bg-[#01213D] hover:bg-[#0682F4]/20 border border-[#2B7EB5]/30 transition cursor-pointer"
+              onClick={() => refreshAffiliateState()}
+              className="flex-1 py-3 px-4 rounded-xl text-sm font-semibold text-white bg-[#0682F4] hover:bg-[#05A9F7] transition cursor-pointer flex items-center justify-center gap-2"
             >
-              Back to Overview
+              <RefreshCw className="w-4 h-4" />
+              Check Review Status
             </button>
             <button
               onClick={() => navigate('/marketplace')}
-              className="flex-1 py-3 px-4 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-[#01213D] to-[#0682F4] hover:to-[#08E6F9] transition cursor-pointer"
+              className="py-3 px-4 rounded-xl text-sm font-medium text-[#CCD2D9] bg-[#01213D] hover:bg-[#0682F4]/20 border border-[#2B7EB5]/30 transition cursor-pointer"
             >
-              Explore Nexovira Products
+              Explore Products
             </button>
           </div>
         </div>
@@ -240,11 +287,22 @@ export const AffiliateApplyPage: React.FC = () => {
           <h2 className="text-2xl font-extrabold mb-2">
             {affiliateStatus === 'SUSPENDED' ? 'Affiliate Account Suspended' : 'Application Not Approved'}
           </h2>
-          <p className="text-sm text-[#CCD2D9] mb-6 leading-relaxed">
+          <p className="text-sm text-[#CCD2D9] mb-4 leading-relaxed">
             {affiliateStatus === 'SUSPENDED'
               ? 'Your affiliate privileges have been temporarily paused due to management compliance review. Please contact partner support.'
               : 'Our partner desk was unable to approve your application at this time. You may contact partner support for more information.'}
           </p>
+
+          {application?.reviewedDate && (
+            <div className="mb-6 p-3 rounded-xl bg-[#000000]/60 border border-[#2B7EB5]/20 text-xs text-[#CCD2D9]">
+              <span>Decision Date: </span>
+              <strong className="text-white">{new Date(application.reviewedDate).toLocaleDateString()}</strong>
+              {application.reviewNotes && (
+                <div className="mt-1 text-white/80 italic">"{application.reviewNotes}"</div>
+              )}
+            </div>
+          )}
+
           <button
             onClick={() => navigate('/marketplace')}
             className="w-full py-3.5 px-6 rounded-xl font-medium text-white bg-[#01213D] hover:bg-[#0682F4]/20 border border-[#2B7EB5]/30 transition cursor-pointer"

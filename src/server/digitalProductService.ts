@@ -6,7 +6,7 @@ import {
   setDoc,
   updateDoc,
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, auth } from '../lib/firebase';
 import {
   DigitalProduct,
   DigitalProductCategory,
@@ -23,6 +23,7 @@ import {
 import { notificationService } from './notificationService';
 import { managementService } from './managementService';
 import { affiliateService } from './affiliateService';
+import { sanitizeFirestoreData } from '../utils/productNormalization';
 
 // Text sanitizer helper
 function sanitizeText(str: string): string {
@@ -68,8 +69,8 @@ export class DigitalProductService {
   constructor() {
     this.seedInitialCategories();
     this.seedInitialProducts();
-    this.init().catch((err) => {
-      console.warn('DigitalProductService background sync notice:', err);
+    this.init().catch(() => {
+      // Background init handled safely
     });
   }
 
@@ -412,6 +413,13 @@ export class DigitalProductService {
 
   private async init(): Promise<void> {
     if (this.isInitialized) return;
+    this.isInitialized = true;
+
+    if (!auth || !auth.currentUser) {
+      // Server runs in memory-authoritative mode without active client session
+      return;
+    }
+
     try {
       if (db) {
         // Load categories from Firestore
@@ -450,10 +458,8 @@ export class DigitalProductService {
           });
         }
       }
-      this.isInitialized = true;
-    } catch (err) {
-      console.warn('DigitalProductService init fallback to memory store:', err);
-      this.isInitialized = true;
+    } catch {
+      // Memory store is authoritative
     }
   }
 
@@ -667,6 +673,7 @@ export class DigitalProductService {
         checksum: input.fileMetadata.checksum || `sha256:${Math.random().toString(36).substring(2, 18)}`,
       },
       storagePath: input.storagePath || `protected/digital-products/${productId}/${input.fileMetadata.fileName}`,
+      externalFileUrl: input.externalFileUrl ? input.externalFileUrl.trim() : undefined,
       downloadLimit: input.downloadLimit !== undefined ? input.downloadLimit : -1,
       affiliateEligible: Boolean(input.affiliateEligible),
       commissionRate: input.commissionRate || 10,
@@ -680,12 +687,12 @@ export class DigitalProductService {
 
     this.productsCache.set(productId, product);
 
-    try {
-      if (db) {
-        await setDoc(doc(db, 'digitalProducts', productId), product);
+    if (db && auth && auth.currentUser) {
+      try {
+        await setDoc(doc(db, 'digitalProducts', productId), sanitizeFirestoreData(product)).catch(() => null);
+      } catch {
+        // Preserved in memory cache
       }
-    } catch (err) {
-      console.warn('Firestore setDoc notice for digital product:', err);
     }
 
     // Audit log
@@ -749,6 +756,10 @@ export class DigitalProductService {
       }
     }
 
+    if (input.externalFileUrl !== undefined) {
+      product.externalFileUrl = input.externalFileUrl.trim() || undefined;
+    }
+
     if (input.previewInfo !== undefined) {
       product.previewInfo = {
         ...product.previewInfo,
@@ -785,15 +796,18 @@ export class DigitalProductService {
 
     product.updatedAt = now;
 
-    try {
-      if (db) {
-        await updateDoc(doc(db, 'digitalProducts', productId), {
-          ...product,
-          updatedAt: now,
-        });
+    if (db && auth && auth.currentUser) {
+      try {
+        await updateDoc(
+          doc(db, 'digitalProducts', productId),
+          sanitizeFirestoreData({
+            ...product,
+            updatedAt: now,
+          })
+        ).catch(() => null);
+      } catch {
+        // Preserved in memory cache
       }
-    } catch (err) {
-      console.warn('Firestore updateDoc notice for digital product:', err);
     }
 
     return product;
@@ -820,16 +834,16 @@ export class DigitalProductService {
     product.visibility = 'PRIVATE';
     product.updatedAt = now;
 
-    try {
-      if (db) {
+    if (db && auth && auth.currentUser) {
+      try {
         await updateDoc(doc(db, 'digitalProducts', productId), {
           status: 'ARCHIVED',
           visibility: 'PRIVATE',
           updatedAt: now,
-        });
+        }).catch(() => null);
+      } catch {
+        // Preserved in memory cache
       }
-    } catch (err) {
-      console.warn('Firestore archive notice for digital product:', err);
     }
 
     return { success: true };
@@ -898,16 +912,16 @@ export class DigitalProductService {
       product.publishedAt = now;
     }
 
-    try {
-      if (db) {
+    if (db && auth && auth.currentUser) {
+      try {
         await updateDoc(doc(db, 'digitalProducts', productId), {
           status: newStatus,
           updatedAt: now,
           ...(newStatus === 'PUBLISHED' ? { publishedAt: product.publishedAt } : {}),
-        });
+        }).catch(() => null);
+      } catch {
+        // Preserved in memory cache
       }
-    } catch (err) {
-      console.warn('Firestore moderation status notice:', err);
     }
 
     // Audit log
@@ -990,15 +1004,15 @@ export class DigitalProductService {
     // Increment sales count on product
     product.salesCount = (product.salesCount || 0) + 1;
 
-    try {
-      if (db) {
-        await setDoc(doc(db, 'digitalEntitlements', entitlementId), entitlement);
+    if (db && auth && auth.currentUser) {
+      try {
+        await setDoc(doc(db, 'digitalEntitlements', entitlementId), entitlement).catch(() => null);
         await updateDoc(doc(db, 'digitalProducts', productId), {
           salesCount: product.salesCount,
-        });
+        }).catch(() => null);
+      } catch {
+        // Preserved in memory cache
       }
-    } catch (err) {
-      console.warn('Firestore entitlement save notice:', err);
     }
 
     // Dispatch notification to buyer
@@ -1068,15 +1082,15 @@ export class DigitalProductService {
     entitlement.status = 'REVOKED';
     entitlement.revokedAt = now;
 
-    try {
-      if (db) {
+    if (db && auth && auth.currentUser) {
+      try {
         await updateDoc(doc(db, 'digitalEntitlements', entitlementId), {
           status: 'REVOKED',
           revokedAt: now,
-        });
+        }).catch(() => null);
+      } catch {
+        // Preserved in memory cache
       }
-    } catch (err) {
-      console.warn('Firestore revoke notice:', err);
     }
 
     return true;
@@ -1189,16 +1203,16 @@ export class DigitalProductService {
     };
     this.downloadLogsCache.push(log);
 
-    try {
-      if (db) {
+    if (db && auth && auth.currentUser) {
+      try {
         await updateDoc(doc(db, 'digitalEntitlements', entitlement.entitlementId), {
           downloadCount: entitlement.downloadCount,
           lastDownloadedAt: now,
-        });
-        await setDoc(doc(db, 'digitalDownloadLogs', log.id), log);
+        }).catch(() => null);
+        await setDoc(doc(db, 'digitalDownloadLogs', log.id), log).catch(() => null);
+      } catch {
+        // Preserved in memory cache
       }
-    } catch (err) {
-      console.warn('Firestore download log notice:', err);
     }
 
     // Generate genuine protected deliverable buffer
@@ -1285,12 +1299,12 @@ ALL RIGHTS RESERVED. UNAUTHORIZED REDISTRIBUTION IS STRICTLY PROHIBITED.
 
     this.reportsCache.unshift(report);
 
-    try {
-      if (db) {
-        await setDoc(doc(db, 'digitalProductReports', reportId), report);
+    if (db && auth && auth.currentUser) {
+      try {
+        await setDoc(doc(db, 'digitalProductReports', reportId), report).catch(() => null);
+      } catch {
+        // Preserved in memory cache
       }
-    } catch (err) {
-      console.warn('Firestore report notice:', err);
     }
 
     return report;

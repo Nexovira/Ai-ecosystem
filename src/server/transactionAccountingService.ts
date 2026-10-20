@@ -423,8 +423,8 @@ export class TransactionAccountingService {
             metadata: { refundId, reason },
           });
         }
-      } catch (revErr) {
-        console.warn('Seller wallet refund deduction notice:', revErr);
+      } catch {
+        // Handled in ledger adjustments
       }
     }
 

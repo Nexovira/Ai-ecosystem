@@ -88,39 +88,21 @@ export const ManagementLayout: React.FC<ManagementLayoutProps> = ({
           </p>
           <div className="pt-2 flex flex-col gap-2">
             {!user ? (
-              <>
-                <button
-                  onClick={() => navigate('/signin')}
-                  className="w-full py-2.5 px-4 rounded-xl text-xs font-bold bg-[#0682F4] hover:bg-[#05A9F7] text-white transition cursor-pointer flex items-center justify-center gap-2"
-                >
-                  <Lock className="w-4 h-4" />
-                  Sign In as Administrator
-                </button>
-                <button
-                  onClick={() => navigate('/admin-setup')}
-                  className="w-full py-2.5 px-4 rounded-xl text-xs font-bold bg-[#01213D] hover:bg-[#01213D]/90 border border-[#08E6F9]/40 text-[#08E6F9] transition cursor-pointer flex items-center justify-center gap-2"
-                >
-                  <Key className="w-4 h-4" />
-                  First Administrator Setup
-                </button>
-              </>
+              <button
+                onClick={() => navigate('/signin')}
+                className="w-full py-2.5 px-4 rounded-xl text-xs font-bold bg-[#0682F4] hover:bg-[#05A9F7] text-white transition cursor-pointer flex items-center justify-center gap-2"
+              >
+                <Lock className="w-4 h-4" />
+                Sign In to Management
+              </button>
             ) : (
-              <>
-                <button
-                  onClick={() => navigate('/account')}
-                  className="w-full py-2.5 px-4 rounded-xl text-xs font-bold bg-[#0682F4] hover:bg-[#05A9F7] text-white transition cursor-pointer flex items-center justify-center gap-2"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                  Return to User Account
-                </button>
-                <button
-                  onClick={() => navigate('/admin-setup')}
-                  className="w-full py-2.5 px-4 rounded-xl text-xs font-semibold bg-[#011629] hover:bg-[#011629]/90 border border-[#08E6F9]/30 text-[#08E6F9] transition cursor-pointer flex items-center justify-center gap-2"
-                >
-                  <Key className="w-4 h-4" />
-                  Administrator Bootstrap Portal
-                </button>
-              </>
+              <button
+                onClick={() => navigate('/account')}
+                className="w-full py-2.5 px-4 rounded-xl text-xs font-bold bg-[#0682F4] hover:bg-[#05A9F7] text-white transition cursor-pointer flex items-center justify-center gap-2"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Return to User Account
+              </button>
             )}
             <button
               onClick={() => navigate('/')}
@@ -224,7 +206,7 @@ export const ManagementLayout: React.FC<ManagementLayoutProps> = ({
     { label: 'Wallets', route: '/management/wallets', icon: Wallet, perm: 'WALLETS_VIEW' as ManagementPermission },
     { label: 'Transactions', route: '/management/transactions', icon: Receipt, perm: 'TRANSACTIONS_VIEW' as ManagementPermission },
     { label: 'Academy', route: '/management/academy', icon: GraduationCap, perm: 'ACADEMY_VIEW' as ManagementPermission },
-    { label: 'Services', route: '/management/services', icon: Briefcase, perm: 'SERVICES_VIEW' as ManagementPermission },
+    { label: 'Tech & Digital Services', route: '/management/services', icon: Briefcase, perm: 'SERVICES_VIEW' as ManagementPermission },
     { label: 'Affiliates', route: '/management/affiliate', icon: Share2, perm: 'AFFILIATES_VIEW' as ManagementPermission },
     { label: 'Reviews', route: '/management/reviews', icon: Star, perm: 'REVIEWS_VIEW' as ManagementPermission },
     { label: 'Analytics', route: '/management/analytics', icon: BarChart3, perm: 'ANALYTICS_VIEW' as ManagementPermission },

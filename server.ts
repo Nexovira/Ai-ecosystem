@@ -1535,12 +1535,38 @@ Respond with a strictly valid JSON object matching this schema:
   });
 
   /**
+   * GET /api/affiliates/payout/banks
+   * Retrieves official bank list for supported payout country from Paystack
+   */
+  app.get('/api/affiliates/payout/banks', async (req: Request, res: Response) => {
+    try {
+      const country = (req.query.country as string) || 'nigeria';
+      const result = await affiliateService.getBankList(country);
+      return res.json(result);
+    } catch (err: unknown) {
+      console.error('Error fetching bank list:', err);
+      return res.status(500).json({ success: false, error: 'Failed to retrieve banks' });
+    }
+  });
+
+  /**
    * POST /api/affiliates/payout/verify-bank
    */
   app.post('/api/affiliates/payout/verify-bank', async (req: Request, res: Response) => {
     try {
       const { accountNumber, bankCode } = req.body;
-      const result = await affiliateService.verifyBankAccount({ accountNumber, bankCode });
+      const clientIdentifier =
+        (req.headers['x-user-id'] as string) ||
+        (req.headers['x-forwarded-for'] as string)?.split(',')[0].trim() ||
+        req.socket.remoteAddress ||
+        accountNumber;
+
+      const result = await affiliateService.verifyBankAccount({
+        accountNumber,
+        bankCode,
+        clientIdentifier,
+      });
+
       if (!result.success) {
         return res.status(400).json(result);
       }
@@ -2222,37 +2248,7 @@ Respond with a strictly valid JSON object matching this schema:
   // Rate limiting tracker for administrator bootstrap requests (Max 3 attempts per 15 minutes)
   const adminBootstrapAttempts = new Map<string, { count: number; firstAttempt: number }>();
 
-  /**
-   * GET /api/auth/first-admin-status
-   * Authoritative endpoint to verify first administrator configuration status.
-   */
-  app.get('/api/auth/first-admin-status', (req: Request, res: Response) => {
-    return res.json({
-      success: true,
-      administratorEmail: 'nexoviratech@gmail.com',
-      secondaryAdminEmail: 'nexovirasupport@gmail.com',
-      role: 'SUPER_ADMIN',
-      managementRoute: '/management',
-      loginRoute: '/signin',
-      signInMethods: [
-        {
-          id: 'google.com',
-          name: 'Google Workspace Account',
-          recommended: true,
-          description: 'Instant zero-password authentication via Google popup. Automatically verifies email control and assigns SUPER_ADMIN.',
-        },
-        {
-          id: 'password',
-          name: 'Email & Password',
-          recommended: false,
-          description: 'Secure personal password established through email verification or password reset flow.',
-        },
-      ],
-      rbacEnforced: true,
-      securityRulesHardened: true,
-      bootstrapProtected: true,
-    });
-  });
+
 
   /**
    * POST /api/auth/bootstrap-first-admin
@@ -3401,6 +3397,15 @@ Respond with a strictly valid JSON object matching this schema:
         userAgent,
         ipAddress,
       });
+
+      // If an external deliverable URL is designated (e.g. Google Drive, Cloudinary Raw, Dropbox), redirect authorized user
+      if (
+        deliverable.product.externalFileUrl &&
+        (deliverable.product.externalFileUrl.startsWith('https://') ||
+          deliverable.product.externalFileUrl.startsWith('http://'))
+      ) {
+        return res.redirect(deliverable.product.externalFileUrl);
+      }
 
       res.setHeader('Content-Type', deliverable.mimeType);
       res.setHeader(

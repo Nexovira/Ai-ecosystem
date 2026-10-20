@@ -9,6 +9,7 @@ import {
   PayoutProfile,
   PayoutRequest,
   CommissionRecord,
+  PaystackBank,
 } from '../types/affiliate';
 
 interface AffiliateContextType {
@@ -37,9 +38,17 @@ interface AffiliateContextType {
     offerTitle?: string;
     error?: string;
   }>;
+  fetchBankList: (country?: string) => Promise<{
+    success: boolean;
+    banks: PaystackBank[];
+    isLive: boolean;
+    error?: string;
+  }>;
   verifyBankDetails: (accountNumber: string, bankCode: string) => Promise<{
     success: boolean;
     accountName?: string;
+    accountNumber?: string;
+    isLive?: boolean;
     error?: string;
   }>;
   savePayoutProfile: (data: {
@@ -175,6 +184,16 @@ export const AffiliateProvider: React.FC<{ children: ReactNode }> = ({ children 
     fetchOffers();
   }, [fetchStatus, fetchOffers]);
 
+  // Reliable polling when application is pending review so approval immediately reflects
+  useEffect(() => {
+    if (affiliateStatus === 'PENDING_REVIEW' && user) {
+      const interval = setInterval(() => {
+        fetchStatus();
+      }, 7000);
+      return () => clearInterval(interval);
+    }
+  }, [affiliateStatus, user, fetchStatus]);
+
   // 4. Submit application
   const applyForProgram = async (data: {
     fullName: string;
@@ -235,6 +254,7 @@ export const AffiliateProvider: React.FC<{ children: ReactNode }> = ({ children 
     }
 
     try {
+      const canonicalOrigin = typeof window !== 'undefined' ? window.location.origin : '';
       const res = await fetch('/api/affiliates/me/links/generate', {
         method: 'POST',
         headers: {
@@ -242,7 +262,10 @@ export const AffiliateProvider: React.FC<{ children: ReactNode }> = ({ children 
           'x-user-id': user.uid,
           'x-user-email': user.email || '',
         },
-        body: JSON.stringify({ offerId }),
+        body: JSON.stringify({
+          offerId,
+          originUrl: canonicalOrigin,
+        }),
       });
 
       const data = await res.json();
@@ -261,15 +284,45 @@ export const AffiliateProvider: React.FC<{ children: ReactNode }> = ({ children 
     }
   };
 
-  // 6. Verify Bank Details
+  // 6. Fetch Bank List (Paystack)
+  const fetchBankList = async (
+    country: string = 'nigeria'
+  ): Promise<{ success: boolean; banks: PaystackBank[]; isLive: boolean; error?: string }> => {
+    try {
+      const res = await fetch(`/api/affiliates/payout/banks?country=${encodeURIComponent(country)}`);
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        return { success: false, banks: [], isLive: false, error: data.error || 'Failed to retrieve banks' };
+      }
+      return {
+        success: true,
+        banks: data.banks || [],
+        isLive: Boolean(data.isLive),
+      };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error fetching banks';
+      return { success: false, banks: [], isLive: false, error: msg };
+    }
+  };
+
+  // 7. Verify Bank Details (Paystack Account Resolution)
   const verifyBankDetails = async (
     accountNumber: string,
     bankCode: string
-  ): Promise<{ success: boolean; accountName?: string; error?: string }> => {
+  ): Promise<{
+    success: boolean;
+    accountName?: string;
+    accountNumber?: string;
+    isLive?: boolean;
+    error?: string;
+  }> => {
     try {
       const res = await fetch('/api/affiliates/payout/verify-bank', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': user?.uid || '',
+        },
         body: JSON.stringify({ accountNumber, bankCode }),
       });
 
@@ -278,7 +331,12 @@ export const AffiliateProvider: React.FC<{ children: ReactNode }> = ({ children 
         return { success: false, error: data.error || 'Bank account verification failed.' };
       }
 
-      return { success: true, accountName: data.accountName };
+      return {
+        success: true,
+        accountName: data.accountName,
+        accountNumber: data.accountNumber,
+        isLive: data.isLive,
+      };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Verification request failed';
       return { success: false, error: msg };
@@ -315,6 +373,7 @@ export const AffiliateProvider: React.FC<{ children: ReactNode }> = ({ children 
       if (resData.profile) {
         setProfile(resData.profile);
       }
+      await fetchStatus();
       return { success: true };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error saving payout profile';
@@ -367,6 +426,7 @@ export const AffiliateProvider: React.FC<{ children: ReactNode }> = ({ children 
         error,
         applyForProgram,
         generateReferralLink,
+        fetchBankList,
         verifyBankDetails,
         savePayoutProfile,
         requestPayoutWithdrawal,

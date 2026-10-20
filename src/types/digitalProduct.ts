@@ -58,6 +58,7 @@ export interface DigitalProduct {
   previewInfo: DigitalPreviewInfo;
   fileMetadata: DigitalFileMetadata;
   storagePath: string; // Internal protected storage reference - NOT exposed publicly
+  externalFileUrl?: string; // Authoritative URL for deliverable ebook / PDF / file
   downloadLimit: number; // 0 or -1 for unlimited, or e.g. 10
   affiliateEligible: boolean;
   commissionRate?: number; // e.g. 10 = 10%
@@ -145,6 +146,7 @@ export interface CreateDigitalProductInput {
   previewInfo?: Partial<DigitalPreviewInfo>;
   fileMetadata: DigitalFileMetadata;
   storagePath?: string;
+  externalFileUrl?: string;
   visibility?: DigitalProductVisibility;
   downloadLimit?: number;
   affiliateEligible?: boolean;
@@ -162,6 +164,7 @@ export interface UpdateDigitalProductInput {
   previewInfo?: Partial<DigitalPreviewInfo>;
   fileMetadata?: Partial<DigitalFileMetadata>;
   storagePath?: string;
+  externalFileUrl?: string;
   downloadLimit?: number;
   affiliateEligible?: boolean;
   commissionRate?: number;

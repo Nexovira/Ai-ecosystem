@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from '../../context/RouterContext';
 import { useAuth } from '../../context/AuthContext';
 import { useAffiliate } from '../../context/AffiliateContext';
@@ -14,30 +14,12 @@ import {
   AlertTriangle,
   ArrowUpRight,
   RefreshCw,
+  Search,
+  Check,
+  ChevronDown,
 } from 'lucide-react';
-
-const NIGERIAN_BANKS = [
-  { code: '044', name: 'Access Bank' },
-  { code: '058', name: 'Guaranty Trust Bank (GTBank)' },
-  { code: '011', name: 'First Bank of Nigeria' },
-  { code: '057', name: 'Zenith Bank' },
-  { code: '033', name: 'United Bank for Africa (UBA)' },
-  { code: '035', name: 'Wema Bank / ALAT' },
-  { code: '070', name: 'Fidelity Bank' },
-  { code: '214', name: 'First City Monument Bank (FCMB)' },
-  { code: '076', name: 'Polaris Bank' },
-  { code: '082', name: 'Keystone Bank' },
-  { code: '050', name: 'Ecobank Nigeria' },
-  { code: '032', name: 'Union Bank of Nigeria' },
-  { code: '221', name: 'Stanbic IBTC Bank' },
-  { code: '232', name: 'Sterling Bank' },
-  { code: '090267', name: 'Kuda Microfinance Bank' },
-  { code: '090405', name: 'Moniepoint MFB' },
-  { code: '090110', name: 'VFD Microfinance Bank' },
-  { code: '100004', name: 'OPay Digital Services' },
-  { code: '090551', name: 'FairMoney Microfinance Bank' },
-  { code: '090549', name: 'Palmpay' },
-];
+import { PaystackBank } from '../../types/affiliate';
+import { AffiliateOnboardingChecklist } from '../../components/affiliate/AffiliateOnboardingChecklist';
 
 export const AffiliatePayoutPage: React.FC = () => {
   const { currentPath, navigate } = useRouter();
@@ -45,7 +27,9 @@ export const AffiliatePayoutPage: React.FC = () => {
   const {
     affiliateStatus,
     profile,
+    application,
     wallet,
+    fetchBankList,
     verifyBankDetails,
     savePayoutProfile,
     requestPayoutWithdrawal,
@@ -67,22 +51,57 @@ export const AffiliatePayoutPage: React.FC = () => {
     }
   }, [isRequestMode]);
 
+  // Banks list from Paystack
+  const [banks, setBanks] = useState<PaystackBank[]>([]);
+  const [isLoadingBanks, setIsLoadingBanks] = useState<boolean>(true);
+  const [bankListError, setBankListError] = useState<string | null>(null);
+  const [bankSearchQuery, setBankSearchQuery] = useState<string>('');
+  const [isBankDropdownOpen, setIsBankDropdownOpen] = useState<boolean>(false);
+
   // Form states for Settings
   const [selectedBankCode, setSelectedBankCode] = useState(profile?.payoutProfile?.bankCode || '');
+  const [selectedBankName, setSelectedBankName] = useState(profile?.payoutProfile?.bankName || '');
   const [accountNumber, setAccountNumber] = useState(profile?.payoutProfile?.accountNumber || '');
   const [resolvedAccountName, setResolvedAccountName] = useState(
     profile?.payoutProfile?.accountName || ''
+  );
+  const [isAccountNameConfirmed, setIsAccountNameConfirmed] = useState<boolean>(
+    Boolean(profile?.payoutProfile?.isVerified)
   );
   const [isVerifyingBank, setIsVerifyingBank] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [bankVerificationError, setBankVerificationError] = useState<string | null>(null);
   const [profileSuccessMsg, setProfileSuccessMsg] = useState<string | null>(null);
+  const [isLivePaystack, setIsLivePaystack] = useState<boolean | undefined>(undefined);
 
   // Form states for Payout Request
   const [requestedAmount, setRequestedAmount] = useState<number>(wallet?.availableBalance || 0);
   const [isSubmittingPayout, setIsSubmittingPayout] = useState(false);
   const [payoutError, setPayoutError] = useState<string | null>(null);
   const [payoutSuccess, setPayoutSuccess] = useState(false);
+
+  // Load banks list from backend/Paystack
+  const loadBanks = async () => {
+    try {
+      setIsLoadingBanks(true);
+      setBankListError(null);
+      const res = await fetchBankList('nigeria');
+      if (res.success && res.banks.length > 0) {
+        setBanks(res.banks);
+        setIsLivePaystack(res.isLive);
+      } else {
+        setBankListError(res.error || 'Failed to load official bank list.');
+      }
+    } catch (err: unknown) {
+      setBankListError((err as Error).message || 'Unable to retrieve banks.');
+    } finally {
+      setIsLoadingBanks(false);
+    }
+  };
+
+  useEffect(() => {
+    loadBanks();
+  }, []);
 
   useEffect(() => {
     if (wallet) {
@@ -93,10 +112,33 @@ export const AffiliatePayoutPage: React.FC = () => {
   useEffect(() => {
     if (profile?.payoutProfile) {
       setSelectedBankCode(profile.payoutProfile.bankCode);
+      setSelectedBankName(profile.payoutProfile.bankName);
       setAccountNumber(profile.payoutProfile.accountNumber);
       setResolvedAccountName(profile.payoutProfile.accountName);
+      setIsAccountNameConfirmed(Boolean(profile.payoutProfile.isVerified));
     }
   }, [profile]);
+
+  // Filtered banks for searchable dropdown (guaranteed deduplication by bank code)
+  const filteredBanks = useMemo(() => {
+    const q = bankSearchQuery.toLowerCase().trim();
+    const list = q
+      ? banks.filter(
+          (b) =>
+            b.name.toLowerCase().includes(q) ||
+            b.code.includes(q) ||
+            (b.slug && b.slug.toLowerCase().includes(q))
+        )
+      : banks;
+
+    const seen = new Set<string>();
+    return list.filter((b) => {
+      const code = (b.code || '').trim();
+      if (!code || seen.has(code)) return false;
+      seen.add(code);
+      return true;
+    });
+  }, [banks, bankSearchQuery]);
 
   if (!user && !isLoading) {
     navigate('/signin?redirect=/affiliate/payout');
@@ -112,29 +154,37 @@ export const AffiliatePayoutPage: React.FC = () => {
     return `₦${(amount || 0).toLocaleString()} NGN`;
   };
 
-  // Handle bank account verification
+  // Handle bank account resolution
   const handleVerifyBank = async () => {
     setBankVerificationError(null);
     setProfileSuccessMsg(null);
+    setResolvedAccountName('');
+    setIsAccountNameConfirmed(false);
 
     if (!selectedBankCode) {
-      setBankVerificationError('Please select your commercial or microfinance bank.');
+      setBankVerificationError('Please select your commercial or microfinance bank from the list.');
       return;
     }
 
-    if (!/^\d{10}$/.test(accountNumber)) {
-      setBankVerificationError('Account number must be exactly 10 digits.');
+    if (!/^\d{10}$/.test(accountNumber.trim())) {
+      setBankVerificationError('NUBAN account number must be exactly 10 digits.');
       return;
     }
 
     setIsVerifyingBank(true);
-    const result = await verifyBankDetails(accountNumber, selectedBankCode);
+    const result = await verifyBankDetails(accountNumber.trim(), selectedBankCode);
     setIsVerifyingBank(false);
 
     if (result.success && result.accountName) {
       setResolvedAccountName(result.accountName);
+      if (result.isLive !== undefined) {
+        setIsLivePaystack(result.isLive);
+      }
     } else {
-      setBankVerificationError(result.error || 'Could not verify account name with the bank.');
+      setBankVerificationError(
+        result.error ||
+          'Could not resolve bank account details. Please verify your 10-digit account number and selected bank.'
+      );
     }
   };
 
@@ -149,20 +199,25 @@ export const AffiliatePayoutPage: React.FC = () => {
       return;
     }
 
-    const bankObj = NIGERIAN_BANKS.find((b) => b.code === selectedBankCode);
-    const bankName = bankObj ? bankObj.name : 'Nigerian Commercial Bank';
+    if (!isAccountNameConfirmed) {
+      setBankVerificationError('Please confirm that the displayed account name belongs to you before saving.');
+      return;
+    }
+
+    const currentBank = banks.find((b) => b.code === selectedBankCode);
+    const bankName = currentBank?.name || selectedBankName || 'Commercial Bank';
 
     setIsSavingProfile(true);
     const result = await savePayoutProfile({
       bankName,
       bankCode: selectedBankCode,
-      accountNumber,
+      accountNumber: accountNumber.trim(),
       accountName: resolvedAccountName,
     });
     setIsSavingProfile(false);
 
     if (result.success) {
-      setProfileSuccessMsg('Payout bank account successfully verified and saved.');
+      setProfileSuccessMsg('Payout account successfully verified and saved! Your affiliate promotion dashboard is now unlocked.');
       await refreshAffiliateState();
     } else {
       setBankVerificationError(result.error || 'Failed to update payout profile.');
@@ -215,32 +270,54 @@ export const AffiliatePayoutPage: React.FC = () => {
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#01213D] border border-[#0682F4]/40 text-[#08E6F9] text-xs font-semibold uppercase tracking-wider mb-2">
               <CreditCard className="w-3.5 h-3.5" />
-              Direct Nigerian Bank Settlement
+              Paystack Bank Settlement
             </div>
-            <h1 className="text-3xl font-extrabold tracking-tight">Payout Management</h1>
+            <h1 className="text-3xl font-extrabold tracking-tight">Affiliate Payout Settings</h1>
             <p className="text-xs sm:text-sm text-[#CCD2D9] mt-1">
-              Configure your verified bank destination or request an immediate withdrawal of available commissions.
+              Configure your verified Nigerian bank destination to activate your promotional links and receive commission settlements.
             </p>
           </div>
 
           <div className="flex items-center gap-3">
+            {hasVerifiedPayoutProfile && (
+              <button
+                onClick={() => navigate('/affiliate/dashboard')}
+                className="px-4 py-2.5 rounded-xl text-xs font-semibold text-white bg-[#0682F4] hover:bg-[#05A9F7] transition cursor-pointer flex items-center gap-1.5"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                Affiliate Dashboard
+              </button>
+            )}
             <button
               onClick={() => navigate('/affiliate/wallet')}
               className="px-4 py-2.5 rounded-xl text-xs font-semibold text-[#CCD2D9] bg-[#01213D] hover:text-white border border-[#2B7EB5]/30 transition cursor-pointer"
             >
-              View Wallet Ledger
-            </button>
-            <button
-              onClick={() => navigate('/affiliate/dashboard')}
-              className="px-4 py-2.5 rounded-xl text-xs font-semibold text-[#CCD2D9] bg-[#01213D] hover:text-white border border-[#2B7EB5]/30 transition cursor-pointer"
-            >
-              Dashboard
+              Wallet
             </button>
           </div>
         </div>
 
+        {/* Onboarding Checklist Summary (If payout profile is not verified yet) */}
+        {!hasVerifiedPayoutProfile && (
+          <AffiliateOnboardingChecklist showActions={false} />
+        )}
+
         {/* Navigation Tabs */}
         <div className="flex items-center gap-3 border-b border-[#2B7EB5]/20 pb-2">
+          <button
+            onClick={() => {
+              setActiveMode('SETTINGS');
+              navigate('/affiliate/payout');
+            }}
+            className={`px-5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-2 ${
+              activeMode === 'SETTINGS'
+                ? 'bg-[#0682F4] text-white shadow-md shadow-[#0682F4]/20'
+                : 'text-[#CCD2D9] hover:text-white bg-[#01213D]/40'
+            }`}
+          >
+            <Building2 className="w-4 h-4" />
+            Bank Payout Details
+          </button>
           <button
             onClick={() => {
               setActiveMode('REQUEST');
@@ -255,36 +332,305 @@ export const AffiliatePayoutPage: React.FC = () => {
             <DollarSign className="w-4 h-4" />
             Request Withdrawal
           </button>
-          <button
-            onClick={() => {
-              setActiveMode('SETTINGS');
-              navigate('/affiliate/payout');
-            }}
-            className={`px-5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-2 ${
-              activeMode === 'SETTINGS'
-                ? 'bg-[#0682F4] text-white shadow-md shadow-[#0682F4]/20'
-                : 'text-[#CCD2D9] hover:text-white bg-[#01213D]/40'
-            }`}
-          >
-            <Building2 className="w-4 h-4" />
-            Payout Account Settings
-          </button>
         </div>
 
-        {/* Tab 1: Payout Request */}
+        {/* Mode 1: Bank Settings */}
+        {activeMode === 'SETTINGS' && (
+          <div className="space-y-6">
+            {/* Active Verified Card */}
+            {hasVerifiedPayoutProfile && (
+              <div className="p-6 rounded-2xl bg-gradient-to-r from-[#01213D] to-[#000000] border border-[#08E6F9]/40 flex items-start justify-between gap-4">
+                <div className="flex items-start gap-3.5">
+                  <div className="p-3 rounded-xl bg-[#0682F4]/20 text-[#08E6F9] shrink-0 mt-1">
+                    <ShieldCheck className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <span className="inline-block px-2.5 py-0.5 rounded-full bg-[#08E6F9]/10 border border-[#08E6F9] text-[#08E6F9] text-[10px] font-bold uppercase tracking-wider mb-2">
+                      Verified & Active Destination
+                    </span>
+                    <div className="text-lg font-bold text-white">
+                      {profile?.payoutProfile?.bankName}
+                    </div>
+                    <div className="text-xs font-mono text-[#CCD2D9] mt-0.5">
+                      Account: {profile?.payoutProfile?.accountNumberMasked || `******${profile?.payoutProfile?.accountNumber?.slice(-4)}`} (Code: {profile?.payoutProfile?.bankCode})
+                    </div>
+                    <div className="text-xs font-semibold text-[#08E6F9] mt-1">
+                      Account Name: {profile?.payoutProfile?.accountName}
+                    </div>
+                    {profile?.payoutProfile?.verifiedAt && (
+                      <div className="text-[10px] text-[#CCD2D9]/60 mt-1">
+                        Verified at: {new Date(profile.payoutProfile.verifiedAt).toLocaleString()}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => navigate('/affiliate/dashboard')}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#0682F4] hover:bg-[#05A9F7] transition cursor-pointer shrink-0 flex items-center gap-1.5"
+                >
+                  Go to Dashboard
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
+            {/* Bank Settings Form */}
+            <form onSubmit={handleSaveProfile} className="p-6 sm:p-8 rounded-2xl bg-[#01213D]/40 border border-[#2B7EB5]/30 space-y-6">
+              <div className="flex items-center justify-between border-b border-[#2B7EB5]/20 pb-3">
+                <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                  <Building2 className="w-5 h-5 text-[#08E6F9]" />
+                  Paystack Verified Bank Details
+                </h2>
+                <span className="text-[11px] text-[#CCD2D9] bg-[#000000]/60 px-3 py-1 rounded-full border border-[#2B7EB5]/20">
+                  Country: <strong>Nigeria (NGN)</strong>
+                </span>
+              </div>
+
+              {bankVerificationError && (
+                <div className="p-4 rounded-xl bg-[#01213D]/80 border border-[#0682F4]/50 flex items-start gap-3">
+                  <AlertTriangle className="w-5 h-5 text-[#08E6F9] shrink-0 mt-0.5" />
+                  <div className="text-xs text-[#CCD2D9]">{bankVerificationError}</div>
+                </div>
+              )}
+
+              {profileSuccessMsg && (
+                <div className="p-5 rounded-xl bg-[#01213D]/80 border border-[#08E6F9]/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="flex items-start gap-3">
+                    <CheckCircle className="w-5 h-5 text-[#08E6F9] shrink-0 mt-0.5" />
+                    <div>
+                      <div className="text-sm font-bold text-white">Payout Account Activated</div>
+                      <div className="text-xs text-[#08E6F9] mt-0.5">{profileSuccessMsg}</div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/affiliate/dashboard')}
+                    className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#0682F4] hover:bg-[#05A9F7] transition cursor-pointer flex items-center gap-1.5 shrink-0"
+                  >
+                    Open Dashboard
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+
+              <div className="space-y-5">
+                {/* Searchable Bank Selector */}
+                <div>
+                  <label className="block text-xs font-semibold text-[#CCD2D9] uppercase tracking-wider mb-2">
+                    1. Select Bank (from official Paystack directory) *
+                  </label>
+
+                  {isLoadingBanks ? (
+                    <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-[#000000] border border-[#2B7EB5]/30 text-xs text-[#CCD2D9]">
+                      <RefreshCw className="w-4 h-4 animate-spin text-[#08E6F9]" />
+                      Loading official Paystack bank directory...
+                    </div>
+                  ) : bankListError ? (
+                    <div className="space-y-2">
+                      <div className="p-3 rounded-xl bg-[#000000] border border-[#2B7EB5]/30 text-xs text-[#CCD2D9]">
+                        {bankListError}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={loadBanks}
+                        className="text-xs text-[#08E6F9] hover:underline cursor-pointer flex items-center gap-1"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" /> Retry loading banks
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="relative">
+                      {/* Dropdown trigger button */}
+                      <button
+                        type="button"
+                        onClick={() => setIsBankDropdownOpen(!isBankDropdownOpen)}
+                        className="w-full px-4 py-3 rounded-xl bg-[#000000] border border-[#2B7EB5]/30 focus:border-[#0682F4] focus:outline-none text-white text-xs sm:text-sm flex items-center justify-between text-left cursor-pointer"
+                      >
+                        <span className={selectedBankName ? 'text-white font-medium' : 'text-[#CCD2D9]/60'}>
+                          {selectedBankName ? `${selectedBankName} (${selectedBankCode})` : '-- Select your bank --'}
+                        </span>
+                        <ChevronDown className="w-4 h-4 text-[#CCD2D9]" />
+                      </button>
+
+                      {/* Dropdown menu */}
+                      {isBankDropdownOpen && (
+                        <div className="absolute z-30 mt-2 w-full rounded-2xl bg-[#01213D] border border-[#0682F4]/50 shadow-2xl p-3 space-y-2 max-h-72 flex flex-col">
+                          {/* Search box inside dropdown */}
+                          <div className="relative">
+                            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#CCD2D9]" />
+                            <input
+                              type="text"
+                              value={bankSearchQuery}
+                              onChange={(e) => setBankSearchQuery(e.target.value)}
+                              placeholder="Type to filter banks (e.g. GTB, Access, Kuda, Moniepoint)..."
+                              className="w-full pl-9 pr-3 py-2 rounded-xl bg-[#000000] border border-[#2B7EB5]/30 focus:border-[#0682F4] focus:outline-none text-white text-xs"
+                              autoFocus
+                            />
+                          </div>
+
+                          {/* List of banks */}
+                          <div className="overflow-y-auto space-y-1 flex-1 pr-1">
+                            {filteredBanks.length === 0 ? (
+                              <div className="p-4 text-center text-xs text-[#CCD2D9]/60">
+                                No banks match "{bankSearchQuery}"
+                              </div>
+                            ) : (
+                              filteredBanks.map((b, idx) => (
+                                <button
+                                  type="button"
+                                  key={`bank-opt-${b.code}-${idx}`}
+                                  onClick={() => {
+                                    setSelectedBankCode(b.code);
+                                    setSelectedBankName(b.name);
+                                    setResolvedAccountName('');
+                                    setIsAccountNameConfirmed(false);
+                                    setIsBankDropdownOpen(false);
+                                    setBankSearchQuery('');
+                                  }}
+                                  className={`w-full px-3 py-2 rounded-lg text-left text-xs transition cursor-pointer flex items-center justify-between ${
+                                    selectedBankCode === b.code
+                                      ? 'bg-[#0682F4] text-white font-bold'
+                                      : 'text-[#CCD2D9] hover:bg-[#000000] hover:text-white'
+                                  }`}
+                                >
+                                  <span>{b.name}</span>
+                                  <span className="font-mono text-[11px] opacity-70">Code: {b.code}</span>
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* 10-Digit NUBAN Account Number */}
+                <div>
+                  <label className="block text-xs font-semibold text-[#CCD2D9] uppercase tracking-wider mb-2">
+                    2. 10-Digit NUBAN Account Number *
+                  </label>
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <input
+                      type="text"
+                      maxLength={10}
+                      value={accountNumber}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, '');
+                        setAccountNumber(val);
+                        setResolvedAccountName('');
+                        setIsAccountNameConfirmed(false);
+                      }}
+                      placeholder="e.g. 0123456789"
+                      className="flex-1 px-4 py-3 rounded-xl bg-[#000000] border border-[#2B7EB5]/30 focus:border-[#0682F4] focus:outline-none text-white font-mono text-base tracking-widest"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleVerifyBank}
+                      disabled={isVerifyingBank || !selectedBankCode || accountNumber.trim().length !== 10}
+                      className="px-6 py-3 rounded-xl font-bold text-xs text-white bg-[#0682F4] hover:bg-[#05A9F7] transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-2 shrink-0 shadow-md shadow-[#0682F4]/20"
+                    >
+                      {isVerifyingBank ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          Resolving with Paystack...
+                        </>
+                      ) : (
+                        <>
+                          <ShieldCheck className="w-4 h-4" />
+                          Verify Account
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-[#CCD2D9]/70 mt-1.5">
+                    Click <strong>Verify Account</strong> to resolve the registered account holder name through the official Paystack verification endpoint.
+                  </p>
+                </div>
+
+                {/* Read-Only Verified Account Name Display */}
+                {resolvedAccountName && (
+                  <div className="p-5 rounded-xl bg-[#000000]/70 border border-[#08E6F9]/50 space-y-3">
+                    <div>
+                      <div className="text-[11px] font-semibold text-[#08E6F9] uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                        <CheckCircle className="w-4 h-4" />
+                        Server-Resolved Account Name (Paystack Verified)
+                      </div>
+                      <div className="text-lg font-extrabold text-white font-mono tracking-wide">
+                        {resolvedAccountName}
+                      </div>
+                      <p className="text-[11px] text-[#CCD2D9]/70 mt-1">
+                        Bank: <strong>{selectedBankName || selectedBankCode}</strong> • Account: <strong>{accountNumber}</strong>
+                      </p>
+                    </div>
+
+                    {/* Confirmation Checkbox */}
+                    <div className="pt-3 border-t border-[#2B7EB5]/20">
+                      <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={isAccountNameConfirmed}
+                          onChange={(e) => setIsAccountNameConfirmed(e.target.checked)}
+                          className="mt-0.5 rounded border-[#2B7EB5] text-[#0682F4] focus:ring-[#08E6F9]"
+                        />
+                        <span className="text-xs text-[#CCD2D9] leading-relaxed">
+                          I confirm that <strong className="text-white">{resolvedAccountName}</strong> is my authentic bank account destination for commission withdrawals.
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Submit & Save Button */}
+              <div className="pt-4 border-t border-[#2B7EB5]/20 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                <button
+                  type="submit"
+                  disabled={isSavingProfile || !resolvedAccountName || !isAccountNameConfirmed}
+                  className="px-8 py-3.5 rounded-xl font-bold text-white bg-gradient-to-r from-[#01213D] via-[#0682F4] to-[#08E6F9] hover:from-[#0682F4] hover:to-[#08E6F9] shadow-lg shadow-[#0682F4]/20 transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-2 text-sm"
+                >
+                  {isSavingProfile ? (
+                    <>
+                      <Clock className="w-4 h-4 animate-spin" />
+                      Saving Verified Profile...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      Save & Activate Payout Profile
+                    </>
+                  )}
+                </button>
+
+                {hasVerifiedPayoutProfile && (
+                  <button
+                    type="button"
+                    onClick={() => navigate('/affiliate/dashboard')}
+                    className="px-6 py-3.5 rounded-xl text-xs font-semibold text-[#CCD2D9] bg-[#000000] hover:text-white border border-[#2B7EB5]/30 transition cursor-pointer text-center"
+                  >
+                    Cancel / Back to Dashboard
+                  </button>
+                )}
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* Mode 2: Request Withdrawal */}
         {activeMode === 'REQUEST' && (
           <div className="space-y-6">
             {/* Balance Overview Card */}
             <div className="p-6 sm:p-8 rounded-2xl bg-gradient-to-r from-[#01213D] to-[#000000] border border-[#2B7EB5]/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
               <div>
                 <span className="text-xs font-semibold text-[#CCD2D9] uppercase tracking-wider">
-                  Withdrawable Commissions
+                  Withdrawable Available Balance
                 </span>
                 <div className="text-3xl sm:text-4xl font-extrabold text-[#08E6F9] mt-1">
                   {formatNaira(wallet?.availableBalance || 0)}
                 </div>
                 <p className="text-xs text-[#CCD2D9] mt-1">
-                  Minimum threshold: <strong>₦5,000 NGN</strong> • Pending hold: {formatNaira(wallet?.pendingBalance || 0)}
+                  Minimum withdrawal threshold: <strong>₦5,000 NGN</strong> • Pending hold: {formatNaira(wallet?.pendingBalance || 0)}
                 </p>
               </div>
 
@@ -310,14 +656,14 @@ export const AffiliatePayoutPage: React.FC = () => {
                 </div>
                 <h3 className="text-lg font-bold text-white">Withdrawal Request Submitted!</h3>
                 <p className="text-xs text-[#CCD2D9] max-w-md mx-auto">
-                  Your payout of {formatNaira(requestedAmount)} is now under management review. Once verified, funds will be disbursed to your verified bank account via Paystack.
+                  Your payout request of {formatNaira(requestedAmount)} has been recorded and queued. Funds will disburse to your verified account via Paystack.
                 </p>
                 <div className="pt-2">
                   <button
                     onClick={() => navigate('/affiliate/wallet')}
                     className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-[#0682F4] hover:bg-[#05A9F7] transition cursor-pointer"
                   >
-                    View in Wallet Ledger
+                    View Wallet Transactions
                   </button>
                 </div>
               </div>
@@ -350,7 +696,7 @@ export const AffiliatePayoutPage: React.FC = () => {
                           {profile?.payoutProfile?.bankName}
                         </div>
                         <div className="text-xs font-mono text-[#08E6F9]">
-                          ******{profile?.payoutProfile?.accountNumber.slice(-4)} — {profile?.payoutProfile?.accountName}
+                          {profile?.payoutProfile?.accountNumberMasked || `******${profile?.payoutProfile?.accountNumber?.slice(-4)}`} — {profile?.payoutProfile?.accountName}
                         </div>
                       </div>
                     ) : (
@@ -383,7 +729,7 @@ export const AffiliatePayoutPage: React.FC = () => {
                       onClick={() => setRequestedAmount(wallet?.availableBalance || 0)}
                       className="text-xs text-[#08E6F9] hover:underline cursor-pointer"
                     >
-                      Withdraw Full Balance ({formatNaira(wallet?.availableBalance || 0)})
+                      Max Available ({formatNaira(wallet?.availableBalance || 0)})
                     </button>
                   </div>
 
@@ -396,7 +742,7 @@ export const AffiliatePayoutPage: React.FC = () => {
                     className="w-full px-4 py-3 rounded-xl bg-[#000000] border border-[#2B7EB5]/30 focus:border-[#0682F4] focus:outline-none text-white font-mono text-base"
                   />
                   <p className="text-[11px] text-[#CCD2D9]/70 mt-1.5">
-                    Server clamps withdrawal to verified available balance. Minimum withdrawal: ₦5,000 NGN.
+                    Minimum withdrawal threshold: ₦5,000 NGN.
                   </p>
                 </div>
 
@@ -441,154 +787,6 @@ export const AffiliatePayoutPage: React.FC = () => {
                 </button>
               </form>
             )}
-          </div>
-        )}
-
-        {/* Tab 2: Payout Account Settings */}
-        {activeMode === 'SETTINGS' && (
-          <div className="space-y-6">
-            {/* Active Bank Account Card */}
-            {hasVerifiedPayoutProfile && (
-              <div className="p-6 rounded-2xl bg-gradient-to-r from-[#01213D] to-[#000000] border border-[#08E6F9]/40 flex items-start justify-between gap-4">
-                <div className="flex items-start gap-3.5">
-                  <div className="p-3 rounded-xl bg-[#0682F4]/20 text-[#08E6F9] shrink-0 mt-1">
-                    <ShieldCheck className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <span className="inline-block px-2.5 py-0.5 rounded-full bg-[#08E6F9]/10 border border-[#08E6F9] text-[#08E6F9] text-[10px] font-bold uppercase tracking-wider mb-2">
-                      Verified Bank Profile
-                    </span>
-                    <div className="text-lg font-bold text-white">
-                      {profile?.payoutProfile?.bankName}
-                    </div>
-                    <div className="text-xs font-mono text-[#CCD2D9] mt-0.5">
-                      Account: ******{profile?.payoutProfile?.accountNumber.slice(-4)}
-                    </div>
-                    <div className="text-xs font-semibold text-white mt-1">
-                      Account Holder: {profile?.payoutProfile?.accountName}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Settings Form */}
-            <form onSubmit={handleSaveProfile} className="p-6 sm:p-8 rounded-2xl bg-[#01213D]/40 border border-[#2B7EB5]/30 space-y-6">
-              <h2 className="text-lg font-bold text-white border-b border-[#2B7EB5]/20 pb-3 flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-[#08E6F9]" />
-                Nigerian Bank Details
-              </h2>
-
-              {bankVerificationError && (
-                <div className="p-4 rounded-xl bg-[#01213D]/60 border border-[#0682F4]/40 flex items-start gap-3">
-                  <AlertTriangle className="w-5 h-5 text-[#08E6F9] shrink-0 mt-0.5" />
-                  <div className="text-xs text-[#CCD2D9]">{bankVerificationError}</div>
-                </div>
-              )}
-
-              {profileSuccessMsg && (
-                <div className="p-4 rounded-xl bg-[#01213D]/60 border border-[#08E6F9]/40 flex items-start gap-3">
-                  <CheckCircle className="w-5 h-5 text-[#08E6F9] shrink-0 mt-0.5" />
-                  <div className="text-xs text-[#08E6F9] font-medium">{profileSuccessMsg}</div>
-                </div>
-              )}
-
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-[#CCD2D9] uppercase tracking-wider mb-2">
-                    Select Bank *
-                  </label>
-                  <select
-                    value={selectedBankCode}
-                    onChange={(e) => {
-                      setSelectedBankCode(e.target.value);
-                      setResolvedAccountName('');
-                    }}
-                    className="w-full px-4 py-3 rounded-xl bg-[#000000] border border-[#2B7EB5]/30 focus:border-[#0682F4] focus:outline-none text-white text-xs sm:text-sm"
-                  >
-                    <option value="">-- Choose Commercial or Microfinance Bank --</option>
-                    {NIGERIAN_BANKS.map((b) => (
-                      <option key={b.code} value={b.code}>
-                        {b.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-[#CCD2D9] uppercase tracking-wider mb-2">
-                    10-Digit NUBAN Account Number *
-                  </label>
-                  <div className="flex flex-col sm:flex-row gap-3">
-                    <input
-                      type="text"
-                      maxLength={10}
-                      value={accountNumber}
-                      onChange={(e) => {
-                        setAccountNumber(e.target.value.replace(/\D/g, ''));
-                        setResolvedAccountName('');
-                      }}
-                      placeholder="e.g. 0123456789"
-                      className="flex-1 px-4 py-3 rounded-xl bg-[#000000] border border-[#2B7EB5]/30 focus:border-[#0682F4] focus:outline-none text-white font-mono text-sm tracking-widest"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleVerifyBank}
-                      disabled={isVerifyingBank || !selectedBankCode || accountNumber.length !== 10}
-                      className="px-6 py-3 rounded-xl font-bold text-xs text-white bg-[#0682F4] hover:bg-[#05A9F7] transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-2 shrink-0"
-                    >
-                      {isVerifyingBank ? (
-                        <>
-                          <RefreshCw className="w-4 h-4 animate-spin" />
-                          Resolving Account...
-                        </>
-                      ) : (
-                        <>
-                          <ShieldCheck className="w-4 h-4" />
-                          Verify Account
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Resolved Account Name Field */}
-                {resolvedAccountName && (
-                  <div className="p-4 rounded-xl bg-[#000000]/60 border border-[#08E6F9]/30">
-                    <div className="text-[11px] font-semibold text-[#08E6F9] uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                      <CheckCircle className="w-4 h-4" />
-                      Verified Account Name
-                    </div>
-                    <div className="text-base font-extrabold text-white">
-                      {resolvedAccountName}
-                    </div>
-                    <p className="text-[11px] text-[#CCD2D9]/70 mt-1">
-                      Account identity confirmed directly with the financial institution.
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              <div className="pt-2">
-                <button
-                  type="submit"
-                  disabled={isSavingProfile || !resolvedAccountName}
-                  className="w-full sm:w-auto px-8 py-3.5 rounded-xl font-bold text-white bg-gradient-to-r from-[#01213D] via-[#0682F4] to-[#08E6F9] hover:from-[#0682F4] hover:to-[#08E6F9] shadow-lg shadow-[#0682F4]/20 transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-2"
-                >
-                  {isSavingProfile ? (
-                    <>
-                      <Clock className="w-4 h-4 animate-spin" />
-                      Saving Verified Details...
-                    </>
-                  ) : (
-                    <>
-                      Save Payout Account
-                      <CheckCircle className="w-4 h-4" />
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
           </div>
         )}
       </div>
