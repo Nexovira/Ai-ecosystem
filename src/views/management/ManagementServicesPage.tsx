@@ -60,6 +60,7 @@ export const ManagementServicesPage: React.FC = () => {
   // Status override state
   const [newStatus, setNewStatus] = useState<ProjectRequestStatus | ''>('');
   const [statusNote, setStatusNote] = useState<string>('');
+  const [actionError, setActionError] = useState<string | null>(null);
 
   // Category modal state
   const [editingCategory, setEditingCategory] = useState<ServiceCategory | null>(null);
@@ -105,18 +106,20 @@ export const ManagementServicesPage: React.FC = () => {
     setAssignExpertId(req.assignedExpertId || '');
     setInternalNotes(req.internalNotes || '');
     setNewStatus('');
+    setActionError(null);
   };
 
   const handleExecuteAssign = async () => {
     if (!selectedRequest || !assignExpertId) return;
     try {
       setAssigning(true);
+      setActionError(null);
       const res = await assignExpert(selectedRequest.requestId, assignExpertId, internalNotes);
       if (res.success) {
         setSelectedRequest(null);
         fetchManagementRequests();
       } else {
-        alert(res.error || 'Assignment failed');
+        setActionError(res.error || 'Assignment failed');
       }
     } finally {
       setAssigning(false);
@@ -127,12 +130,13 @@ export const ManagementServicesPage: React.FC = () => {
     if (!selectedRequest || !newStatus) return;
     try {
       setAssigning(true);
+      setActionError(null);
       const res = await updateProjectStatus(selectedRequest.requestId, newStatus, statusNote);
       if (res.success) {
         setSelectedRequest(null);
         fetchManagementRequests();
       } else {
-        alert(res.error || 'Status update failed');
+        setActionError(res.error || 'Status update failed');
       }
     } finally {
       setAssigning(false);
@@ -654,6 +658,12 @@ export const ManagementServicesPage: React.FC = () => {
                   ✕
                 </button>
               </div>
+
+              {actionError && (
+                <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300">
+                  {actionError}
+                </div>
+              )}
 
               {/* Assignment Form */}
               <div className="space-y-4">

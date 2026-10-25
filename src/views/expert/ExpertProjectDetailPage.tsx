@@ -40,6 +40,7 @@ export const ExpertProjectDetailPage: React.FC<ExpertProjectDetailPageProps> = (
   const [statusNote, setStatusNote] = useState<string>('');
   const [messageText, setMessageText] = useState<string>('');
   const [sendingMessage, setSendingMessage] = useState<boolean>(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -69,12 +70,13 @@ export const ExpertProjectDetailPage: React.FC<ExpertProjectDetailPageProps> = (
   const handleTransition = async (newStatus: ProjectRequestStatus, noteMsg?: string) => {
     try {
       setUpdatingStatus(true);
+      setActionError(null);
       const res = await updateProjectStatus(projectId, newStatus, noteMsg || statusNote);
       if (res.success) {
         setStatusNote('');
         loadData();
       } else {
-        alert(res.error || 'Could not update project status');
+        setActionError(res.error || 'Could not update project status');
       }
     } finally {
       setUpdatingStatus(false);
@@ -87,13 +89,16 @@ export const ExpertProjectDetailPage: React.FC<ExpertProjectDetailPageProps> = (
 
     try {
       setSendingMessage(true);
+      setActionError(null);
       const res = await postProjectUpdate(projectId, messageText);
       if (res.success && res.update) {
         setUpdates((prev) => [...prev, res.update!]);
         setMessageText('');
       } else {
-        alert(res.error || 'Failed to send update');
+        setActionError(res.error || 'Failed to send update');
       }
+    } catch {
+      setActionError('Network error sending update');
     } finally {
       setSendingMessage(false);
     }
@@ -143,6 +148,13 @@ export const ExpertProjectDetailPage: React.FC<ExpertProjectDetailPageProps> = (
             <span>Back to My Projects</span>
           </button>
         </div>
+
+        {actionError && (
+          <div className="mb-6 p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center justify-between">
+            <span>{actionError}</span>
+            <button onClick={() => setActionError(null)} className="text-rose-400 hover:text-white">✕</button>
+          </div>
+        )}
 
         {/* Top Header Overview Card */}
         <div className="bg-[#011B33] border border-[#0682F4]/30 rounded-3xl p-6 sm:p-8 shadow-2xl mb-8">

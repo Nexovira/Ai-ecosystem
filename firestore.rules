@@ -45,7 +45,16 @@ service cloud.firestore {
         (
           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['SELLER', 'ADMIN', 'SUPER_ADMIN']
-        )
+        ) ||
+        exists(/databases/$(database)/documents/sellers/$('seller-' + request.auth.uid))
+      );
+    }
+
+    function isSellerOrOwner(sellerId) {
+      return isSignedIn() && (
+        sellerId == request.auth.uid ||
+        sellerId == 'seller-' + request.auth.uid ||
+        isAdmin()
       );
     }
 
@@ -107,11 +116,12 @@ service cloud.firestore {
     // Seller Applications Collection
     match /sellerApplications/{applicationId} {
       allow get: if isValidId(applicationId) && isSignedIn() &&
-        (resource.data.userId == request.auth.uid || isAdmin());
+        (applicationId == request.auth.uid || resource == null || resource.data.userId == request.auth.uid || isAdmin());
       allow list: if isSignedIn() && isAdmin();
 
       // Customer can submit application, but CANNOT self-approve
       allow create: if isValidId(applicationId) && isSignedIn() &&
+        (applicationId == request.auth.uid || incoming().userId == request.auth.uid) &&
         incoming().userId == request.auth.uid &&
         incoming().status == 'PENDING_REVIEW' &&
         incoming().submittedAt == request.time &&
@@ -127,6 +137,7 @@ service cloud.firestore {
     // Verified Seller Profiles
     match /sellers/{sellerId} {
       allow get: if isValidId(sellerId) && (
+        resource == null ||
         resource.data.verificationStatus == 'VERIFIED' ||
         (isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin()))
       );
@@ -160,16 +171,17 @@ service cloud.firestore {
     match /products/{productId} {
       // Public can read published products. Sellers can read their own. Admins can read all.
       allow get: if isValidId(productId) && (
+        resource == null ||
         resource.data.productStatus == 'PUBLISHED' ||
-        (isSignedIn() && (resource.data.sellerId == request.auth.uid || isAdmin()))
+        (isSignedIn() && (isSellerOrOwner(resource.data.sellerId) || isAdmin()))
       );
       allow list: if resource.data.productStatus == 'PUBLISHED' ||
-        (isSignedIn() && (resource.data.sellerId == request.auth.uid || isAdmin()));
+        (isSignedIn() && (isSellerOrOwner(resource.data.sellerId) || isAdmin()));
 
       // Only verified sellers and admins can create products. Price and stock must be positive.
       allow create: if isValidId(productId) &&
         isSeller() &&
-        (incoming().sellerId == request.auth.uid || isAdmin()) &&
+        (isSellerOrOwner(incoming().sellerId) || isAdmin()) &&
         incoming().price is number && incoming().price > 0 &&
         incoming().stockQuantity is number && incoming().stockQuantity >= 0 &&
         incoming().createdAt == request.time &&
@@ -178,7 +190,7 @@ service cloud.firestore {
       // Sellers can only update their own products. Price and stock must be positive.
       allow update: if isValidId(productId) &&
         isSignedIn() &&
-        (isAdmin() || (isSeller() && resource.data.sellerId == request.auth.uid && incoming().sellerId == resource.data.sellerId)) &&
+        (isAdmin() || (isSeller() && isSellerOrOwner(resource.data.sellerId) && incoming().sellerId == resource.data.sellerId)) &&
         incoming().price is number && incoming().price > 0 &&
         incoming().stockQuantity is number && incoming().stockQuantity >= 0 &&
         incoming().updatedAt == request.time;
@@ -186,7 +198,7 @@ service cloud.firestore {
       // Only product owner or admin can delete
       allow delete: if isValidId(productId) &&
         isSignedIn() &&
-        (isAdmin() || (isSeller() && resource.data.sellerId == request.auth.uid));
+        (isAdmin() || (isSeller() && isSellerOrOwner(resource.data.sellerId)));
     }
 
     // Categories (Publicly readable, Admin managed)
@@ -205,7 +217,7 @@ service cloud.firestore {
     // Customer Orders (Strict IDOR protection: Customer can only read and manage their own order)
     match /orders/{orderId} {
       allow get: if isValidId(orderId) && isSignedIn() &&
-        (resource.data.customerId == request.auth.uid || isAdmin());
+        (resource == null || resource.data.customerId == request.auth.uid || isAdmin());
       allow list: if isSignedIn() &&
         (resource.data.customerId == request.auth.uid || isAdmin());
       allow create: if isValidId(orderId) && isSignedIn() &&
@@ -218,9 +230,9 @@ service cloud.firestore {
     // Order Line Items (Customer can read/create their items; Seller can only read items belonging to them)
     match /orderItems/{orderItemId} {
       allow get: if isValidId(orderItemId) && isSignedIn() &&
-        (resource.data.customerId == request.auth.uid || resource.data.sellerId == request.auth.uid || resource.data.sellerId == 'seller-' + request.auth.uid || isAdmin());
+        (resource == null || resource.data.customerId == request.auth.uid || isSellerOrOwner(resource.data.sellerId) || isAdmin());
       allow list: if isSignedIn() &&
-        (resource.data.customerId == request.auth.uid || resource.data.sellerId == request.auth.uid || resource.data.sellerId == 'seller-' + request.auth.uid || isAdmin());
+        (resource.data.customerId == request.auth.uid || isSellerOrOwner(resource.data.sellerId) || isAdmin());
       allow create: if isValidId(orderItemId) && isSignedIn() &&
         (incoming().customerId == request.auth.uid || isAdmin());
       allow update: if isValidId(orderItemId) && isSignedIn() &&
@@ -231,7 +243,7 @@ service cloud.firestore {
     // Payment Ledger Records (Only payer and admin can read/create)
     match /payments/{paymentId} {
       allow get: if isValidId(paymentId) && isSignedIn() &&
-        (resource.data.userId == request.auth.uid || isAdmin());
+        (resource == null || resource.data.userId == request.auth.uid || isAdmin());
       allow list: if isSignedIn() &&
         (resource.data.userId == request.auth.uid || isAdmin());
       allow create: if isValidId(paymentId) && isSignedIn() &&
@@ -251,6 +263,7 @@ service cloud.firestore {
     // Expert Profiles (Public directory shows verified public experts; Experts manage permitted profile fields)
     match /experts/{expertId} {
       allow get: if isValidId(expertId) && (
+        resource == null ||
         (resource.data.verificationStatus == 'VERIFIED' && resource.data.profileVisibility == 'PUBLIC') ||
         (isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin()))
       );
@@ -295,6 +308,7 @@ service cloud.firestore {
     // Customer Service Project Requests
     match /projectRequests/{requestId} {
       allow get: if isValidId(requestId) && isSignedIn() && (
+        resource == null ||
         resource.data.customerId == request.auth.uid ||
         resource.data.assignedExpertId == request.auth.uid ||
         isAdmin()
@@ -356,10 +370,11 @@ service cloud.firestore {
     // Expert Applications
     match /expertApplications/{applicationId} {
       allow get: if isValidId(applicationId) && isSignedIn() &&
-        (resource.data.userId == request.auth.uid || isAdmin());
+        (applicationId == request.auth.uid || resource == null || resource.data.userId == request.auth.uid || isAdmin());
       allow list: if isSignedIn() && isAdmin();
 
       allow create: if isValidId(applicationId) && isSignedIn() &&
+        (applicationId == request.auth.uid || incoming().userId == request.auth.uid) &&
         incoming().userId == request.auth.uid &&
         incoming().status == 'PENDING_REVIEW' &&
         incoming().submittedAt == request.time &&
@@ -400,7 +415,7 @@ service cloud.firestore {
 
     // Nexovira Academy Courses
     match /courses/{courseId} {
-      allow get: if isValidId(courseId) && (resource.data.status == 'PUBLISHED' || (isSignedIn() && isAdmin()));
+      allow get: if isValidId(courseId) && (resource == null || resource.data.status == 'PUBLISHED' || (isSignedIn() && isAdmin()));
       allow list: if resource.data.status == 'PUBLISHED' || (isSignedIn() && isAdmin());
       allow write: if isValidId(courseId) && isSignedIn() && isAdmin();
     }
@@ -408,7 +423,7 @@ service cloud.firestore {
     // Scholarship Applications
     match /scholarshipApplications/{appId} {
       allow get: if isValidId(appId) && isSignedIn() && (
-        resource.data.userId == request.auth.uid || isAdmin()
+        resource == null || resource.data.userId == request.auth.uid || isAdmin()
       );
       allow list: if isSignedIn() && (
         resource.data.userId == request.auth.uid || isAdmin()
@@ -424,7 +439,7 @@ service cloud.firestore {
     // Scholarship Payments
     match /scholarshipPayments/{paymentId} {
       allow read: if isValidId(paymentId) && isSignedIn() && (
-        resource.data.userId == request.auth.uid || isAdmin()
+        resource == null || resource.data.userId == request.auth.uid || isAdmin()
       );
       allow write: if isValidId(paymentId) && isSignedIn() && isAdmin();
     }
@@ -432,7 +447,7 @@ service cloud.firestore {
     // Nexovira Affiliate Applications
     match /affiliateApplications/{appId} {
       allow get: if isValidId(appId) && isSignedIn() && (
-        resource.data.userId == request.auth.uid || isAdmin()
+        resource == null || resource.data.userId == request.auth.uid || isAdmin()
       );
       allow list: if isSignedIn() && (
         resource.data.userId == request.auth.uid || isAdmin()
@@ -445,7 +460,7 @@ service cloud.firestore {
     // Nexovira Affiliate Profiles
     match /affiliateProfiles/{affId} {
       allow get: if isValidId(affId) && (
-        (isSignedIn() && resource.data.userId == request.auth.uid) ||
+        (isSignedIn() && (resource == null || resource.data.userId == request.auth.uid)) ||
         (isSignedIn() && isAdmin())
       );
       allow list: if isSignedIn() && isAdmin();

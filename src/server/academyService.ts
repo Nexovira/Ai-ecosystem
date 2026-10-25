@@ -11,9 +11,10 @@ import {
 import { INITIAL_COURSES, INITIAL_COURSE_CATEGORIES } from '../data/academyCatalog';
 import { paymentGateway } from './payment/PaymentGateway';
 import { db } from '../lib/firebase';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { affiliateService } from './affiliateService';
 import { notificationService } from './notificationService';
+import { sanitizeFirestoreData } from '../utils/productNormalization';
 
 export class AcademyService {
   private courses: Map<string, Course> = new Map();
@@ -56,6 +57,24 @@ export class AcademyService {
           crsSnap.forEach((doc) => {
             const data = doc.data() as Course;
             this.courses.set(data.courseId || doc.id, { ...data, courseId: data.courseId || doc.id });
+          });
+        }
+
+        // Hydrate persistent scholarship applications from Firestore
+        const appSnap = await getDocs(collection(db, 'scholarshipApplications')).catch(() => null);
+        if (appSnap && !appSnap.empty) {
+          appSnap.forEach((docSnap) => {
+            const data = docSnap.data() as ScholarshipApplication;
+            this.applications.set(data.applicationId || docSnap.id, { ...data, applicationId: data.applicationId || docSnap.id });
+          });
+        }
+
+        // Hydrate persistent scholarship payments from Firestore
+        const paySnap = await getDocs(collection(db, 'scholarshipPayments')).catch(() => null);
+        if (paySnap && !paySnap.empty) {
+          paySnap.forEach((docSnap) => {
+            const data = docSnap.data() as ScholarshipPayment;
+            this.payments.set(data.paymentId || docSnap.id, { ...data, paymentId: data.paymentId || docSnap.id });
           });
         }
       }
@@ -277,6 +296,9 @@ export class AcademyService {
     };
 
     this.courses.set(courseId, newCourse);
+    setDoc(doc(db, 'courses', courseId), sanitizeFirestoreData(newCourse)).catch((err) => {
+      console.warn('Firestore course write notice:', err);
+    });
     return newCourse;
   }
 
@@ -307,6 +329,9 @@ export class AcademyService {
     };
 
     this.courses.set(courseId, updated);
+    setDoc(doc(db, 'courses', courseId), sanitizeFirestoreData(updated), { merge: true }).catch((err) => {
+      console.warn('Firestore course update notice:', err);
+    });
     return updated;
   }
 
@@ -314,6 +339,9 @@ export class AcademyService {
     if (!['ADMIN', 'SUPER_ADMIN'].includes(userRole)) {
       throw new Error('Forbidden: Super Admin or Admin role required to delete courses');
     }
+    deleteDoc(doc(db, 'courses', courseId)).catch((err) => {
+      console.warn('Firestore course delete notice:', err);
+    });
     return this.courses.delete(courseId);
   }
 
@@ -408,6 +436,9 @@ export class AcademyService {
       updatedAt: new Date().toISOString(),
     };
     this.payments.set(paymentId, paymentRecord);
+    setDoc(doc(db, 'scholarshipPayments', paymentId), sanitizeFirestoreData(paymentRecord)).catch((err) => {
+      console.warn('Firestore scholarshipPayment init notice:', err);
+    });
 
     // 4. Initialize transaction with Paystack Provider
     const callbackUrl = `${originUrl}/academy/courses/${course.slug}?verify_payment=true&reference=${encodeURIComponent(
@@ -588,6 +619,14 @@ export class AcademyService {
       }
     }
 
+    // Persist verified payment and application to Firestore
+    setDoc(doc(db, 'scholarshipPayments', payment.paymentId), sanitizeFirestoreData(payment), { merge: true }).catch((err) => {
+      console.warn('Firestore scholarshipPayment verify write notice:', err);
+    });
+    setDoc(doc(db, 'scholarshipApplications', application.applicationId), sanitizeFirestoreData(application), { merge: true }).catch((err) => {
+      console.warn('Firestore scholarshipApplication verify write notice:', err);
+    });
+
     return {
       success: true,
       verified: true,
@@ -711,6 +750,10 @@ export class AcademyService {
         applicantName: responses.fullName,
       }
     );
+
+    setDoc(doc(db, 'scholarshipApplications', application.applicationId), sanitizeFirestoreData(application), { merge: true }).catch((err) => {
+      console.warn('Firestore scholarshipApplication submit write notice:', err);
+    });
 
     return application;
   }
@@ -843,6 +886,10 @@ export class AcademyService {
         }
       );
     }
+
+    setDoc(doc(db, 'scholarshipApplications', application.applicationId), sanitizeFirestoreData(application), { merge: true }).catch((err) => {
+      console.warn('Firestore scholarshipApplication review write notice:', err);
+    });
 
     return application;
   }

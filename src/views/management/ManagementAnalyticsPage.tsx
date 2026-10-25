@@ -94,7 +94,7 @@ export const ManagementAnalyticsPage: React.FC = () => {
       document.body.removeChild(a);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error exporting report';
-      alert(`Export Failed: ${msg}`);
+      setError(`Export Failed: ${msg}`);
     } finally {
       setExporting(false);
     }

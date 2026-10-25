@@ -38,6 +38,7 @@ export const ManagementIntegrationsPage: React.FC = () => {
   const [deliveries, setDeliveries] = useState<WebhookDeliveryRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [revokingKeyId, setRevokingKeyId] = useState<string | null>(null);
 
   // New Key Modal
   const [showKeyModal, setShowKeyModal] = useState<boolean>(false);
@@ -123,9 +124,8 @@ export const ManagementIntegrationsPage: React.FC = () => {
   };
 
   const handleRevokeKey = async (keyId: string) => {
-    if (!confirm(`Are you sure you want to permanently revoke API Key ${keyId}?`)) return;
-
     try {
+      setRevokingKeyId(null);
       const res = await fetch(`/api/management/integrations/keys/${keyId}/revoke`, {
         method: 'POST',
         headers: getHeaders(),
@@ -275,13 +275,31 @@ export const ManagementIntegrationsPage: React.FC = () => {
                   </div>
 
                   {k.status === 'ACTIVE' && (
-                    <button
-                      onClick={() => handleRevokeKey(k.keyId)}
-                      className="px-3 py-1.5 rounded-xl text-xs font-bold bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/30 transition flex items-center gap-1.5 cursor-pointer self-end md:self-center"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>Revoke</span>
-                    </button>
+                    revokingKeyId === k.keyId ? (
+                      <div className="flex items-center gap-1.5 bg-red-500/10 border border-red-500/30 p-1.5 rounded-xl self-end md:self-center">
+                        <span className="text-[10px] text-red-300 font-semibold px-1">Revoke key?</span>
+                        <button
+                          onClick={() => handleRevokeKey(k.keyId)}
+                          className="px-2 py-0.5 rounded bg-red-600 hover:bg-red-700 text-white text-xs font-bold"
+                        >
+                          Yes
+                        </button>
+                        <button
+                          onClick={() => setRevokingKeyId(null)}
+                          className="text-xs text-[#CCD2D9] hover:text-white px-1"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setRevokingKeyId(k.keyId)}
+                        className="px-3 py-1.5 rounded-xl text-xs font-bold bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/30 transition flex items-center gap-1.5 cursor-pointer self-end md:self-center"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Revoke</span>
+                      </button>
+                    )
                   )}
                 </div>
               ))}

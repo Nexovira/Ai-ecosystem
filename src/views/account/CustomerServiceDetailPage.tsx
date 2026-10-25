@@ -42,6 +42,8 @@ export const CustomerServiceDetailPage: React.FC<CustomerServiceDetailPageProps>
   const [messageText, setMessageText] = useState<string>('');
   const [sendingMessage, setSendingMessage] = useState<boolean>(false);
   const [cancelling, setCancelling] = useState<boolean>(false);
+  const [actionFeedback, setActionFeedback] = useState<{ type: 'error' | 'success'; message: string } | null>(null);
+  const [showCancelConfirm, setShowCancelConfirm] = useState<boolean>(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -73,29 +75,31 @@ export const CustomerServiceDetailPage: React.FC<CustomerServiceDetailPageProps>
 
     try {
       setSendingMessage(true);
+      setActionFeedback(null);
       const res = await postProjectUpdate(requestId, messageText);
       if (res.success && res.update) {
         setUpdates((prev) => [...prev, res.update!]);
         setMessageText('');
       } else {
-        alert(res.error || 'Failed to send update');
+        setActionFeedback({ type: 'error', message: res.error || 'Failed to send update' });
       }
     } catch {
-      alert('Network error sending update');
+      setActionFeedback({ type: 'error', message: 'Network error sending update' });
     } finally {
       setSendingMessage(false);
     }
   };
 
   const handleCancelRequest = async () => {
-    if (!confirm('Are you sure you want to cancel this project request?')) return;
     try {
       setCancelling(true);
+      setActionFeedback(null);
       const res = await updateProjectStatus(requestId, 'CANCELLED', 'Cancelled by client');
       if (res.success) {
+        setShowCancelConfirm(false);
         loadData();
       } else {
-        alert(res.error || 'Could not cancel request');
+        setActionFeedback({ type: 'error', message: res.error || 'Could not cancel request' });
       }
     } finally {
       setCancelling(false);
@@ -176,17 +180,38 @@ export const CustomerServiceDetailPage: React.FC<CustomerServiceDetailPageProps>
 
             {/* Cancel Action (if in SUBMITTED state) */}
             {request.status === 'SUBMITTED' && (
-              <div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleCancelRequest}
-                  disabled={cancelling}
-                  className="text-rose-400 border-rose-500/40 hover:bg-rose-500/10 text-xs"
-                >
-                  <Ban className="w-3.5 h-3.5 mr-1.5" />
-                  <span>Cancel Request</span>
-                </Button>
+              <div className="flex items-center gap-2">
+                {showCancelConfirm ? (
+                  <div className="flex items-center gap-2 bg-rose-500/10 border border-rose-500/30 p-1.5 rounded-xl">
+                    <span className="text-xs text-rose-300 font-semibold px-1">Confirm cancel?</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleCancelRequest}
+                      disabled={cancelling}
+                      className="bg-rose-600 hover:bg-rose-700 text-white border-none text-xs px-2.5 py-1"
+                    >
+                      {cancelling ? 'Cancelling...' : 'Yes, Cancel'}
+                    </Button>
+                    <button
+                      onClick={() => setShowCancelConfirm(false)}
+                      className="text-xs text-[#CCD2D9] hover:text-white px-1.5"
+                    >
+                      Nevermind
+                    </button>
+                  </div>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowCancelConfirm(true)}
+                    disabled={cancelling}
+                    className="text-rose-400 border-rose-500/40 hover:bg-rose-500/10 text-xs"
+                  >
+                    <Ban className="w-3.5 h-3.5 mr-1.5" />
+                    <span>Cancel Request</span>
+                  </Button>
+                )}
               </div>
             )}
           </div>
@@ -364,6 +389,12 @@ export const CustomerServiceDetailPage: React.FC<CustomerServiceDetailPageProps>
                   })
                 )}
               </div>
+
+              {actionFeedback && (
+                <div className={`p-2.5 rounded-xl text-xs mb-3 ${actionFeedback.type === 'error' ? 'bg-rose-500/10 border border-rose-500/30 text-rose-300' : 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-300'}`}>
+                  {actionFeedback.message}
+                </div>
+              )}
 
               {/* Message Input Box */}
               <form onSubmit={handleSendMessage} className="pt-4 border-t border-[#0682F4]/20 flex gap-2">

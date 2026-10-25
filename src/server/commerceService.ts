@@ -303,16 +303,17 @@ export class CommerceService {
     this.paymentsCache.unshift(paymentRecord);
     this.orderItemsCache.push(...orderItems);
 
-    // Sync to Firestore if permissions allow
+    // Sync to Firestore persistently
     try {
       const batch = writeBatch(db);
-      batch.set(doc(db, 'orders', orderId), newOrder);
-      batch.set(doc(db, 'payments', paymentId), paymentRecord);
+      batch.set(doc(db, 'orders', orderId), sanitizeFirestoreData(newOrder));
+      batch.set(doc(db, 'payments', paymentId), sanitizeFirestoreData(paymentRecord));
       for (const item of orderItems) {
-        batch.set(doc(db, 'orderItems', item.orderItemId), item);
+        batch.set(doc(db, 'orderItems', item.orderItemId), sanitizeFirestoreData(item));
       }
-    } catch {
-      // Order safely persisted to authoritative server memory
+      await batch.commit();
+    } catch (dbErr) {
+      console.warn('Orders Firestore sync fallback to authoritative server memory:', dbErr);
     }
 
     // Dispatch real in-app order creation notification for buyer

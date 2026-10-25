@@ -58,6 +58,7 @@ export const DigitalProductDetailPage: React.FC<DigitalProductDetailPageProps> =
   const [reportExplanation, setReportExplanation] = useState('');
   const [reportSubmitting, setReportSubmitting] = useState(false);
   const [reportSuccess, setReportSuccess] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
 
   // Fetch Product Details
   useEffect(() => {
@@ -229,6 +230,7 @@ export const DigitalProductDetailPage: React.FC<DigitalProductDetailPageProps> =
     }
     if (!product) return;
     setReportSubmitting(true);
+    setReportError(null);
     try {
       const res = await fetch(`/api/digital-products/${product.productId}/report`, {
         method: 'POST',
@@ -251,10 +253,11 @@ export const DigitalProductDetailPage: React.FC<DigitalProductDetailPageProps> =
         setReportOpen(false);
         setReportSuccess(false);
         setReportExplanation('');
+        setReportError(null);
       }, 2000);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to submit report';
-      alert(msg);
+      setReportError(msg);
     } finally {
       setReportSubmitting(false);
     }
@@ -680,6 +683,11 @@ export const DigitalProductDetailPage: React.FC<DigitalProductDetailPageProps> =
               </div>
             ) : (
               <form onSubmit={handleReportSubmit} className="space-y-4 text-xs">
+                {reportError && (
+                  <div className="p-2.5 bg-rose-500/10 border border-rose-500/30 rounded-lg text-rose-300">
+                    {reportError}
+                  </div>
+                )}
                 <div>
                   <label className="block text-[#CCD2D9] mb-1 font-semibold">Reason for Report</label>
                   <select

@@ -69,6 +69,7 @@ export const ManagementAcademyPage: React.FC = () => {
   // Course editing modal / state
   const [editingCourse, setEditingCourse] = useState<Partial<Course> | null>(null);
   const [isCreatingCourse, setIsCreatingCourse] = useState(false);
+  const [deletingCourseId, setDeletingCourseId] = useState<string | null>(null);
 
   // Category editing state
   const [editingCategory, setEditingCategory] = useState<Partial<CourseCategory> | null>(null);
@@ -458,16 +459,34 @@ export const ManagementAcademyPage: React.FC = () => {
                       <span>Edit Track</span>
                     </button>
 
-                    <button
-                      onClick={async () => {
-                        if (confirm(`Are you sure you want to delete course ${c.title}?`)) {
-                          await deleteCourse(c.courseId);
-                        }
-                      }}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {deletingCourseId === c.courseId ? (
+                      <div className="flex items-center gap-1 bg-red-500/10 border border-red-500/30 px-2 py-1 rounded-lg">
+                        <span className="text-[10px] text-red-300 font-semibold">Delete?</span>
+                        <button
+                          onClick={async () => {
+                            await deleteCourse(c.courseId);
+                            setDeletingCourseId(null);
+                          }}
+                          className="text-[10px] px-1.5 py-0.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded"
+                        >
+                          Yes
+                        </button>
+                        <button
+                          onClick={() => setDeletingCourseId(null)}
+                          className="text-[10px] text-slate-300 hover:text-white px-1"
+                        >
+                          No
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setDeletingCourseId(c.courseId)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                        title="Delete Course Track"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}

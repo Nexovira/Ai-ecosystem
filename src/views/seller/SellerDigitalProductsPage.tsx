@@ -46,6 +46,7 @@ export const SellerDigitalProductsPage: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<DigitalProduct | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
 
   // Form Fields
   const [title, setTitle] = useState('');
@@ -270,9 +271,9 @@ export const SellerDigitalProductsPage: React.FC = () => {
   };
 
   const handleDelete = async (productId: string) => {
-    if (!confirm('Are you sure you want to archive this digital publication?')) return;
     if (!user) return;
     try {
+      setDeletingProductId(null);
       const res = await fetch(`/api/creator/digital-products/${productId}`, {
         method: 'DELETE',
         headers: {
@@ -471,13 +472,31 @@ export const SellerDigitalProductsPage: React.FC = () => {
                         >
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
-                        <button
-                          onClick={() => handleDelete(p.productId)}
-                          className="p-1.5 rounded-lg bg-[#011B33] hover:bg-rose-500/20 border border-[#0682F4]/30 text-rose-400 transition cursor-pointer"
-                          title="Archive Publication"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {deletingProductId === p.productId ? (
+                          <span className="inline-flex items-center gap-1 bg-rose-500/10 border border-rose-500/30 px-2 py-0.5 rounded-lg">
+                            <span className="text-[10px] text-rose-300 font-semibold">Archive?</span>
+                            <button
+                              onClick={() => handleDelete(p.productId)}
+                              className="text-[10px] px-1.5 py-0.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded"
+                            >
+                              Yes
+                            </button>
+                            <button
+                              onClick={() => setDeletingProductId(null)}
+                              className="text-[10px] text-[#CCD2D9] hover:text-white px-1"
+                            >
+                              No
+                            </button>
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => setDeletingProductId(p.productId)}
+                            className="p-1.5 rounded-lg bg-[#011B33] hover:bg-rose-500/20 border border-[#0682F4]/30 text-rose-400 transition cursor-pointer"
+                            title="Archive Publication"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}

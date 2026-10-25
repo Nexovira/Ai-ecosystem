@@ -29,6 +29,7 @@ import { INITIAL_SERVICE_CATEGORIES, INITIAL_EXPERTS } from '../data/servicesCat
 
 import { db } from '../lib/firebase';
 import { notificationService } from './notificationService';
+import { sanitizeFirestoreData } from '../utils/productNormalization';
 
 // In-memory runtime caching to guarantee 100% responsiveness and smooth fallbacks
 class ServicesService {
@@ -81,6 +82,40 @@ class ServicesService {
       }
     } catch {
       // In-memory experts from servicesCatalog are default
+    }
+
+    try {
+      // Safely load expert applications from Firestore
+      const appRef = collection(db, 'expertApplications');
+      const appSnap = await getDocs(appRef);
+      if (!appSnap.empty) {
+        appSnap.forEach((docSnap) => {
+          const app = docSnap.data() as ExpertApplication;
+          const idx = this.applicationsCache.findIndex((a) => a.applicationId === app.applicationId);
+          if (idx >= 0) {
+            this.applicationsCache[idx] = app;
+          } else {
+            this.applicationsCache.push(app);
+          }
+        });
+      }
+    } catch {
+      // Fallback
+    }
+
+    try {
+      // Safely load project requests from Firestore
+      const reqRef = collection(db, 'projectRequests');
+      const reqSnap = await getDocs(reqRef);
+      if (!reqSnap.empty) {
+        const fromDb: ProjectRequest[] = [];
+        reqSnap.forEach((docSnap) => {
+          fromDb.push(docSnap.data() as ProjectRequest);
+        });
+        this.requestsCache = fromDb;
+      }
+    } catch {
+      // Fallback
     }
   }
 
@@ -397,6 +432,44 @@ class ServicesService {
     } catch {
       // Use cache
     }
+
+    // Also check for pending applications from expertApplications that may not yet be in experts
+    try {
+      const appSnap = await getDocs(collection(db, 'expertApplications'));
+      if (!appSnap.empty) {
+        appSnap.forEach((docSnap) => {
+          const app = docSnap.data() as ExpertApplication;
+          const exists = this.expertsCache.find((e) => e.userId === app.userId || e.expertId === `exp-${app.userId.slice(0, 10)}`);
+          if (!exists) {
+            const pendingExpert: ExpertProfile = {
+              expertId: `exp-${app.userId.slice(0, 10)}`,
+              userId: app.userId,
+              fullName: app.fullName,
+              professionalTitle: app.professionalTitle,
+              profileImage: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
+              bio: app.bio,
+              skills: app.skills,
+              serviceCategories: app.serviceCategories,
+              yearsOfExperience: app.yearsOfExperience,
+              portfolioLinks: app.portfolioLinks,
+              location: app.location,
+              languages: app.languages,
+              availabilityStatus: 'AVAILABLE',
+              profileVisibility: 'HIDDEN',
+              verificationStatus: app.status === 'APPROVED' ? 'VERIFIED' : app.status === 'REJECTED' ? 'REJECTED' : 'PENDING',
+              completedProjectsCount: 0,
+              rating: 5.0,
+              createdAt: app.submittedAt,
+              updatedAt: app.updatedAt,
+            };
+            this.expertsCache.push(pendingExpert);
+          }
+        });
+      }
+    } catch {
+      // Fallback
+    }
+
     return [...this.expertsCache];
   }
 
@@ -441,6 +514,10 @@ class ServicesService {
       this.expertsCache.push(updated);
     }
 
+    setDoc(doc(db, 'experts', expertId), sanitizeFirestoreData(updated), { merge: true }).catch((err) => {
+      console.warn('Firestore expert profile write notice:', err);
+    });
+
     return { success: true, profile: updated };
   }
 
@@ -458,6 +535,46 @@ class ServicesService {
     expert.verificationStatus = status;
     if (visibility) expert.profileVisibility = visibility;
     expert.updatedAt = new Date().toISOString();
+
+    // 1. Persist to experts collection
+    setDoc(doc(db, 'experts', expertId), sanitizeFirestoreData({
+      verificationStatus: status,
+      profileVisibility: expert.profileVisibility,
+      updatedAt: expert.updatedAt,
+    }), { merge: true }).catch((err) => {
+      console.warn('Firestore expert status write notice:', err);
+    });
+
+    // 2. Persist to expertApplications collection if exists
+    const appDocId = `app-exp-${expert.userId}`;
+    setDoc(doc(db, 'expertApplications', appDocId), sanitizeFirestoreData({
+      status: status === 'VERIFIED' ? 'APPROVED' : status === 'REJECTED' ? 'REJECTED' : 'PENDING_REVIEW',
+      updatedAt: expert.updatedAt,
+    }), { merge: true }).catch(() => {});
+
+    // 3. Authoritatively update user role in users collection to keep permissions persistent across login/logout!
+    if (expert.userId) {
+      const targetRole = status === 'VERIFIED' ? 'EXPERT' : 'CUSTOMER';
+      setDoc(doc(db, 'users', expert.userId), {
+        role: targetRole,
+        updatedAt: expert.updatedAt,
+      }, { merge: true }).catch((err) => {
+        console.warn('Firestore user role sync notice:', err);
+      });
+
+      // Dispatch in-app notification
+      notificationService.dispatch({
+        recipientUserId: expert.userId,
+        type: 'ACCOUNT_STATUS_CHANGED',
+        category: 'SERVICES',
+        title: status === 'VERIFIED' ? 'Expert Status Approved!' : 'Expert Application Update',
+        message: status === 'VERIFIED'
+          ? 'Congratulations! Your Nexovira Tech & Digital Services expert profile has been verified. You can now receive and manage client project requests.'
+          : `Your expert status has been updated to ${status}.`,
+        actionUrl: '/expert/dashboard',
+        priority: 'HIGH',
+      }).catch(() => {});
+    }
 
     this.recordAuditLog(
       'MANAGEMENT',
@@ -486,6 +603,7 @@ class ServicesService {
     }
 
     const applicationId = `app-exp-${userId}`;
+    const expertId = `exp-${userId.slice(0, 10)}`;
     const now = new Date().toISOString();
 
     const application: ExpertApplication = {
@@ -512,6 +630,45 @@ class ServicesService {
     } else {
       this.applicationsCache.push(application);
     }
+
+    // Persist application
+    setDoc(doc(db, 'expertApplications', applicationId), sanitizeFirestoreData(application), { merge: true }).catch((err) => {
+      console.warn('Firestore expertApplication write notice:', err);
+    });
+
+    // Also register pending expert profile in experts collection
+    const expertProfile: ExpertProfile = {
+      expertId,
+      userId,
+      fullName: application.fullName,
+      professionalTitle: application.professionalTitle,
+      profileImage: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
+      bio: application.bio,
+      skills: application.skills,
+      serviceCategories: application.serviceCategories,
+      yearsOfExperience: application.yearsOfExperience,
+      portfolioLinks: application.portfolioLinks,
+      location: application.location,
+      languages: application.languages,
+      availabilityStatus: 'AVAILABLE',
+      profileVisibility: 'HIDDEN',
+      verificationStatus: 'PENDING',
+      completedProjectsCount: 0,
+      rating: 5.0,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const expIdx = this.expertsCache.findIndex((e) => e.expertId === expertId || e.userId === userId);
+    if (expIdx >= 0) {
+      this.expertsCache[expIdx] = expertProfile;
+    } else {
+      this.expertsCache.push(expertProfile);
+    }
+
+    setDoc(doc(db, 'experts', expertId), sanitizeFirestoreData(expertProfile), { merge: true }).catch((err) => {
+      console.warn('Firestore pending expert write notice:', err);
+    });
 
     return { success: true, application };
   }
@@ -610,6 +767,12 @@ class ServicesService {
 
     this.requestsCache.unshift(newRequest);
     this.updatesCache[requestId] = [initialUpdate];
+
+    // Persist to Firestore
+    setDoc(doc(db, 'projectRequests', requestId), sanitizeFirestoreData(newRequest)).catch((err) => {
+      console.warn('Firestore projectRequest write notice:', err);
+    });
+    setDoc(doc(db, 'projectRequests', requestId, 'updates', initialUpdate.updateId), sanitizeFirestoreData(initialUpdate)).catch(() => {});
 
     // Dispatch real notification events
     this.dispatchNotificationEvent(
@@ -777,6 +940,11 @@ class ServicesService {
     if (!this.updatesCache[requestId]) this.updatesCache[requestId] = [];
     this.updatesCache[requestId].push(assignmentUpdate);
 
+    setDoc(doc(db, 'projectRequests', requestId), sanitizeFirestoreData(req), { merge: true }).catch((err) => {
+      console.warn('Firestore projectRequest assign notice:', err);
+    });
+    setDoc(doc(db, 'projectRequests', requestId, 'updates', assignmentUpdate.updateId), sanitizeFirestoreData(assignmentUpdate)).catch(() => {});
+
     this.recordAuditLog(
       'MANAGEMENT',
       'nexoviratech@gmail.com',
@@ -876,6 +1044,11 @@ class ServicesService {
 
     if (!this.updatesCache[requestId]) this.updatesCache[requestId] = [];
     this.updatesCache[requestId].push(statusUpdateMsg);
+
+    setDoc(doc(db, 'projectRequests', requestId), sanitizeFirestoreData(req), { merge: true }).catch((err) => {
+      console.warn('Firestore projectRequest status write notice:', err);
+    });
+    setDoc(doc(db, 'projectRequests', requestId, 'updates', statusUpdateMsg.updateId), sanitizeFirestoreData(statusUpdateMsg)).catch(() => {});
 
     this.recordAuditLog(
       requesterUserId,
@@ -978,9 +1151,16 @@ class ServicesService {
     if (!this.updatesCache[requestId]) this.updatesCache[requestId] = [];
     this.updatesCache[requestId].push(newUpdate);
 
+    setDoc(doc(db, 'projectRequests', requestId, 'updates', updateId), sanitizeFirestoreData(newUpdate)).catch((err) => {
+      console.warn('Firestore project update write notice:', err);
+    });
+
     // Update parent request's updatedAt
     const req = this.requestsCache.find((r) => r.requestId === requestId);
-    if (req) req.updatedAt = now;
+    if (req) {
+      req.updatedAt = now;
+      setDoc(doc(db, 'projectRequests', requestId), { updatedAt: now }, { merge: true }).catch(() => {});
+    }
 
     return { success: true, update: newUpdate };
   }

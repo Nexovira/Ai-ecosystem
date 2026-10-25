@@ -2449,11 +2449,42 @@ Respond with a strictly valid JSON object matching this schema:
       const search = (req.query.search as string) || '';
       const status = (req.query.status as string) || 'ALL';
 
-      const sSnap = await (await import('firebase/firestore')).getDocs(
-        (await import('firebase/firestore')).collection((await import('./src/lib/firebase')).db, 'sellers')
-      );
+      const { db } = await import('./src/lib/firebase');
+      const { getDocs, collection } = await import('firebase/firestore');
+
+      // 1. Fetch official and verified seller profiles
+      const sSnap = await getDocs(collection(db, 'sellers')).catch(() => null);
       let sellers: any[] = [];
-      sSnap.forEach((d) => sellers.push(d.data()));
+      if (sSnap && !sSnap.empty) {
+        sSnap.forEach((d) => sellers.push(d.data()));
+      }
+
+      // 2. Fetch pending and reviewed seller applications to display in dashboard
+      const appSnap = await getDocs(collection(db, 'sellerApplications')).catch(() => null);
+      if (appSnap && !appSnap.empty) {
+        appSnap.forEach((d) => {
+          const app = d.data();
+          const targetId = `seller-${app.userId || d.id}`;
+          // If not already in sellers list, merge application as seller candidate
+          if (!sellers.some((s) => s.sellerId === targetId || s.userId === (app.userId || d.id))) {
+            sellers.push({
+              sellerId: targetId,
+              userId: app.userId || d.id,
+              businessName: app.businessName || 'Merchant Applicant',
+              slug: app.businessName ? app.businessName.toLowerCase().replace(/[^a-z0-9]+/g, '-') : targetId,
+              businessDescription: app.businessDescription || 'Merchant application under review.',
+              businessLocation: app.businessLocation || 'Nigeria / Global',
+              contactEmail: app.contactEmail || '',
+              contactPhone: app.contactPhone || '',
+              categories: app.categories || ['Computing & Accessories'],
+              verificationStatus: app.status || 'PENDING_REVIEW',
+              createdAt: app.submittedAt || app.createdAt || new Date().toISOString(),
+              updatedAt: app.updatedAt || new Date().toISOString(),
+              submittedAt: app.submittedAt || app.createdAt,
+            });
+          }
+        });
+      }
 
       if (search) {
         const q = search.toLowerCase();
@@ -2478,7 +2509,7 @@ Respond with a strictly valid JSON object matching this schema:
 
   /**
    * POST /api/management/sellers/:sellerId/verify
-   * Review seller verification status.
+   * Review seller verification status. Persists to sellers, sellerApplications, and updates user role.
    */
   app.post('/api/management/sellers/:sellerId/verify', async (req: Request, res: Response) => {
     try {
@@ -2488,19 +2519,100 @@ Respond with a strictly valid JSON object matching this schema:
       const { sellerId } = req.params;
       const { status, notes } = req.body;
 
-      const sellerRef = (await import('firebase/firestore')).doc(
-        (await import('./src/lib/firebase')).db,
-        'sellers',
-        sellerId
-      );
-      await (await import('firebase/firestore')).updateDoc(sellerRef, {
-        verificationStatus: status,
-        reviewedBy: authResult.userId,
-        reviewedAt: new Date().toISOString(),
-        reviewNotes: notes || '',
-      });
+      const { db } = await import('./src/lib/firebase');
+      const { doc, getDoc, setDoc, updateDoc } = await import('firebase/firestore');
 
-      // Audit log
+      const targetUserId = sellerId.replace(/^seller-/, '');
+      const now = new Date().toISOString();
+
+      // 1. Update / Create seller profile document
+      const sellerRef = doc(db, 'sellers', sellerId);
+      const sellerSnap = await getDoc(sellerRef).catch(() => null);
+
+      if (sellerSnap && sellerSnap.exists()) {
+        await updateDoc(sellerRef, {
+          verificationStatus: status,
+          reviewedBy: authResult.userId,
+          reviewedAt: now,
+          reviewNotes: notes || '',
+          updatedAt: now,
+        });
+      } else {
+        // Fetch application metadata to seed seller profile
+        const appRef = doc(db, 'sellerApplications', targetUserId);
+        const appSnap = await getDoc(appRef).catch(() => null);
+        const appData = appSnap?.exists() ? appSnap.data() : null;
+
+        await setDoc(sellerRef, {
+          sellerId,
+          userId: targetUserId,
+          businessName: appData?.businessName || 'Verified Merchant',
+          slug: appData?.businessName ? appData.businessName.toLowerCase().replace(/[^a-z0-9]+/g, '-') : sellerId,
+          businessDescription: appData?.businessDescription || 'Verified technology merchant on the Nexovira ecosystem.',
+          businessLocation: appData?.businessLocation || 'Operating Location',
+          contactEmail: appData?.contactEmail || '',
+          contactPhone: appData?.contactPhone || '',
+          categories: appData?.categories || ['Appliances', 'Computing & Accessories'],
+          verificationStatus: status,
+          reviewedBy: authResult.userId,
+          reviewedAt: now,
+          reviewNotes: notes || '',
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+
+      // 2. Synchronize seller application document
+      try {
+        const appRef = doc(db, 'sellerApplications', targetUserId);
+        const appSnap = await getDoc(appRef);
+        if (appSnap.exists()) {
+          await updateDoc(appRef, {
+            status,
+            reviewedBy: authResult.userId,
+            reviewedAt: now,
+            reviewNotes: notes || '',
+            updatedAt: now,
+          });
+        }
+      } catch (appErr) {
+        console.warn('Seller application update note:', appErr);
+      }
+
+      // 3. Promote/demote User role in Users collection so role persists on reload/login
+      try {
+        const userRef = doc(db, 'users', targetUserId);
+        const userSnap = await getDoc(userRef);
+        if (userSnap.exists()) {
+          const currentRole = userSnap.data()?.role;
+          // Only change if not an admin/super_admin
+          if (!['ADMIN', 'SUPER_ADMIN'].includes(currentRole)) {
+            await updateDoc(userRef, {
+              role: status === 'VERIFIED' ? 'SELLER' : 'CUSTOMER',
+              updatedAt: now,
+            });
+          }
+        }
+      } catch (userErr) {
+        console.warn('User role update note:', userErr);
+      }
+
+      // 4. Notify applicant of verification decision
+      notificationService.dispatch({
+        recipientUserId: targetUserId,
+        type: 'SYSTEM_ALERT',
+        category: 'MANAGEMENT',
+        title: status === 'VERIFIED' ? 'Seller Account Verified!' : 'Seller Application Status',
+        message: status === 'VERIFIED'
+          ? 'Congratulations! Your Nexovira merchant application has been approved. You can now publish products to the technology marketplace.'
+          : `Your seller verification status is now: ${status}. ${notes || ''}`,
+        relatedEntityType: 'SELLER',
+        relatedEntityId: sellerId,
+        actionUrl: status === 'VERIFIED' ? '/seller/dashboard' : '/seller/apply',
+        priority: 'HIGH',
+      }).catch(() => {});
+
+      // 5. Immutable Audit log
       await managementService.recordAuditLog({
         actorId: authResult.userId,
         actorEmail: authResult.userEmail,
