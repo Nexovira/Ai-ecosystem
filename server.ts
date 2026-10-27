@@ -5201,6 +5201,11 @@ Respond with a strictly valid JSON object matching this schema:
     });
     app.use(vite.middlewares);
   } else {
+    // Prevent unhandled API routes from returning index.html
+    app.all('/api/*', (_req: Request, res: Response) => {
+      res.status(404).json({ success: false, error: 'API endpoint not found', status: 404 });
+    });
+
     const distPath = path.resolve(__dirname, 'dist');
     app.use(express.static(distPath));
     app.get('*', (_req: Request, res: Response) => {

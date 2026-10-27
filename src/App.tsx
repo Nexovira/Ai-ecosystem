@@ -114,6 +114,9 @@ import { ManagementIntegrationsPage } from './views/management/ManagementIntegra
 // Phase 23: Scale, Performance & Reliability Views
 import { ManagementReliabilityPage } from './views/management/ManagementReliabilityPage';
 
+// Common Views
+import { NotFoundPage } from './views/common/NotFoundPage';
+
 const MainRouterView: React.FC = () => {
   const { currentPath, navigate } = useRouter();
 
@@ -418,7 +421,7 @@ const MainRouterView: React.FC = () => {
       return <FutureScopeView route={currentPath} />;
 
     default:
-      return <HomePage onOpenGetStarted={() => navigate('/register')} />;
+      return <NotFoundPage requestedPath={currentPath} />;
   }
 };
 

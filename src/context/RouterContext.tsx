@@ -12,37 +12,7 @@ export const RouterProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [currentPath, setCurrentPath] = useState<RoutePath>(() => {
     if (typeof window !== 'undefined') {
       const path = (window.location.pathname + window.location.search) as RoutePath;
-      const pathname = window.location.pathname;
-      const validPrefixes = [
-        '/',
-        '/ai',
-        '/marketplace',
-        '/services',
-        '/expert',
-        '/academy',
-        '/digital-products',
-        '/about',
-        '/contact',
-        '/privacy',
-        '/terms',
-        '/signin',
-        '/register',
-        '/forgot-password',
-        '/verify-email',
-        '/reset-password',
-        '/account',
-        '/checkout',
-        '/management',
-        '/affiliate',
-        '/notifications',
-        '/settings',
-        '/search',
-        '/r/',
-      ];
-      const isValid = validPrefixes.some((prefix) =>
-        prefix === '/' ? pathname === '/' : pathname.startsWith(prefix)
-      );
-      return isValid ? path : '/';
+      return path || '/';
     }
     return '/';
   });
