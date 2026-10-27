@@ -519,7 +519,7 @@ export class ReviewService {
           message: `A customer has posted a ${rating}-star verified review for your product "${entityTitle}".`,
           relatedEntityType: 'PRODUCT',
           relatedEntityId: input.entityId,
-          actionUrl: `/seller/dashboard`,
+          actionUrl: `/management/reviews`,
           priority: 'NORMAL',
           idempotencyKey: `seller_review_notif_${reviewId}`,
         })

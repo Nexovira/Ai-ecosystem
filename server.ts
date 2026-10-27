@@ -257,20 +257,11 @@ async function startServer() {
    * GET /api/seller/orders
    * Fetches order items belonging to the authenticated merchant.
    */
-  app.get('/api/seller/orders', async (req: Request, res: Response) => {
-    try {
-      const sellerId = (req.query.sellerId as string) || (req.headers['x-seller-id'] as string);
-      if (!sellerId) {
-        return res.status(401).json({ success: false, error: 'Seller identity required.' });
-      }
-
-      const orderItems = await commerceService.getSellerOrderItems(sellerId);
-      return res.json({ success: true, orderItems });
-    } catch (err: unknown) {
-      console.error('Error fetching seller orders:', err);
-      const msg = err instanceof Error ? err.message : 'Failed to fetch seller items';
-      return res.status(500).json({ success: false, error: msg });
-    }
+  app.get('/api/seller/orders', async (_req: Request, res: Response) => {
+    return res.status(403).json({
+      success: false,
+      error: 'Seller dashboard and seller-managed orders have been decommissioned. Product management is restricted to administrators.',
+    });
   });
 
   // ==========================================
@@ -3616,17 +3607,24 @@ Respond with a strictly valid JSON object matching this schema:
   app.post('/api/creator/digital-products', async (req: Request, res: Response) => {
     try {
       const creatorId = (req.headers['x-user-id'] as string) || req.body.creatorId;
-      const creatorName = (req.headers['x-user-name'] as string) || req.body.creatorName || 'Verified Creator';
-      const creatorRole = ((req.headers['x-user-role'] as string) || req.body.creatorRole || 'SELLER') as 'SELLER' | 'EXPERT' | 'MANAGEMENT';
+      const creatorName = (req.headers['x-user-name'] as string) || req.body.creatorName || 'Nexovira Catalog Admin';
+      const userRole = (req.headers['x-user-role'] as string) || '';
 
       if (!creatorId) {
         return res.status(401).json({ success: false, error: 'Authentication required to create publication.' });
       }
 
+      if (!['ADMIN', 'SUPER_ADMIN', 'CONTENT_MANAGER'].includes(userRole)) {
+        return res.status(403).json({
+          success: false,
+          error: 'Forbidden: Product creation is restricted to platform administrators.',
+        });
+      }
+
       const product = await digitalProductService.createDigitalProduct(
         creatorId,
         creatorName,
-        creatorRole,
+        'MANAGEMENT',
         req.body
       );
 
@@ -4547,10 +4545,10 @@ Respond with a strictly valid JSON object matching this schema:
         return res.status(401).json({ success: false, error: 'Authentication required' });
       }
 
-      // Check seller permission: must be a registered seller or management
-      const isSellerOrAdmin = ['SELLER', 'ADMIN', 'SUPER_ADMIN'].includes(userRole);
-      if (!isSellerOrAdmin) {
-        return res.status(403).json({ success: false, error: 'Forbidden: Seller status required' });
+      // Product analytics are restricted to administrative operations
+      const isAdmin = ['ADMIN', 'SUPER_ADMIN', 'CONTENT_MANAGER', 'ANALYTICS_VIEW'].some((r) => userRole.includes(r));
+      if (!isAdmin) {
+        return res.status(403).json({ success: false, error: 'Forbidden: Administrator clearance required' });
       }
 
       const { range } = req.query;

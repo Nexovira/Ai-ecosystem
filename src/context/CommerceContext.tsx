@@ -22,7 +22,6 @@ interface CommerceContextType {
   ) => Promise<CheckoutInitializeResponse>;
   verifyPayment: (reference: string, orderId?: string) => Promise<PaymentVerifyResponse>;
   fetchMyOrders: () => Promise<Order[]>;
-  fetchSellerOrderItems: () => Promise<OrderItem[]>;
 }
 
 const CommerceContext = createContext<CommerceContextType | undefined>(undefined);
@@ -179,28 +178,6 @@ export const CommerceProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [user]);
 
-  /**
-   * Fetches order items for verified sellers.
-   */
-  const fetchSellerOrderItems = useCallback(async (): Promise<OrderItem[]> => {
-    if (!user) return [];
-    try {
-      const res = await fetch(`/api/seller/orders?sellerId=${encodeURIComponent(user.uid)}`, {
-        headers: {
-          'x-seller-id': user.uid,
-        },
-      });
-      const data = await res.json();
-      if (data.success && Array.isArray(data.orderItems)) {
-        return data.orderItems;
-      }
-      return [];
-    } catch (err) {
-      console.error('Error fetching seller items:', err);
-      return [];
-    }
-  }, [user]);
-
   return (
     <CommerceContext.Provider
       value={{
@@ -210,7 +187,6 @@ export const CommerceProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         initializeCheckout,
         verifyPayment,
         fetchMyOrders,
-        fetchSellerOrderItems,
       }}
     >
       {children}

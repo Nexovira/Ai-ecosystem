@@ -31,7 +31,6 @@ export const RouterProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         '/verify-email',
         '/reset-password',
         '/account',
-        '/seller',
         '/checkout',
         '/management',
         '/affiliate',

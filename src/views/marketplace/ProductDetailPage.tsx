@@ -436,21 +436,10 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ slug }) =>
                 </div>
 
                 <div className="flex items-center justify-between pb-2 border-b border-[#0682F4]/15 font-mono">
-                  <span className="text-[#CCD2D9]/70">Verified Merchant</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (product.sellerId === 'nexovira-official-store') {
-                        navigate('/seller/store/nexovira-official-store');
-                      } else {
-                        navigate(`/seller/store/${product.sellerId.replace(/^seller-/, '')}`);
-                      }
-                    }}
-                    className="text-[#08E6F9] hover:underline flex items-center gap-1 cursor-pointer font-medium text-right max-w-[200px] truncate"
-                  >
-                    <span className="truncate">{product.sellerId === 'nexovira-official-store' ? 'Nexovira Direct Official' : product.sellerId}</span>
-                    <ExternalLink className="w-3 h-3 shrink-0" />
-                  </button>
+                  <span className="text-[#CCD2D9]/70">Fulfillment</span>
+                  <span className="text-[#08E6F9] font-medium text-right max-w-[200px] truncate">
+                    Nexovira Direct Official
+                  </span>
                 </div>
 
                 <div className="flex items-start gap-2.5 text-[11px] text-[#CCD2D9]/80 pt-1">

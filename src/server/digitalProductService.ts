@@ -946,7 +946,7 @@ export class DigitalProductService {
       message: `Your digital product "${product.title}" status has been set to ${newStatus}. Reason: ${reason || 'Editorial review completed'}.`,
       relatedEntityType: 'MARKETPLACE',
       relatedEntityId: productId,
-      actionUrl: '/seller/dashboard',
+      actionUrl: '/management/digital-products',
       priority: 'HIGH',
       idempotencyKey: `dp_mod_${productId}_${newStatus}_${Date.now()}`,
     }).catch(() => {});
@@ -1038,7 +1038,7 @@ export class DigitalProductService {
       message: `A customer purchased your digital publication "${product.title}".`,
       relatedEntityType: 'MARKETPLACE',
       relatedEntityId: productId,
-      actionUrl: '/seller/dashboard',
+      actionUrl: '/management/digital-products',
       priority: 'NORMAL',
       idempotencyKey: `creator_sale_${entitlementId}`,
     }).catch(() => {});

@@ -2,7 +2,6 @@ import React from 'react';
 import { RouterProvider, useRouter } from './context/RouterContext';
 import { AuthProvider } from './context/AuthContext';
 import { MarketplaceProvider } from './context/MarketplaceContext';
-import { SellerProvider } from './context/SellerContext';
 import { CommerceProvider } from './context/CommerceContext';
 import { ServicesProvider } from './context/ServicesContext';
 import { Header } from './components/layout/Header';
@@ -19,15 +18,11 @@ import { AccountSettingsPage } from './views/account/AccountSettingsPage';
 import { AccountSecurityPage } from './views/account/AccountSecurityPage';
 import { MarketplaceHome } from './views/marketplace/MarketplaceHome';
 import { ProductDetailPage } from './views/marketplace/ProductDetailPage';
-import { SellerApplyPage } from './views/seller/SellerApplyPage';
-import { SellerDashboard } from './views/seller/SellerDashboard';
-import { ProductFormPage } from './views/seller/ProductFormPage';
-import { SellerStorePage } from './views/seller/SellerStorePage';
+import { ManagementProductFormPage } from './views/management/ManagementProductFormPage';
 import { CheckoutPage } from './views/commerce/CheckoutPage';
 import { OrderConfirmationPage } from './views/commerce/OrderConfirmationPage';
 import { CustomerOrdersPage } from './views/commerce/CustomerOrdersPage';
 import { OrderDetailView } from './views/commerce/OrderDetailView';
-import { SellerOrdersView } from './views/seller/SellerOrdersView';
 
 // Tech & Digital Services Views
 import { ServicesLandingPage } from './views/services/ServicesLandingPage';
@@ -91,7 +86,6 @@ import { ManagementReviewsPage } from './views/management/ManagementReviewsPage'
 import { DigitalProductsDiscoveryPage } from './views/digital/DigitalProductsDiscoveryPage';
 import { DigitalProductDetailPage } from './views/digital/DigitalProductDetailPage';
 import { CustomerDigitalLibraryPage } from './views/account/CustomerDigitalLibraryPage';
-import { SellerDigitalProductsPage } from './views/seller/SellerDigitalProductsPage';
 import { ManagementDigitalProductsPage } from './views/management/ManagementDigitalProductsPage';
 
 // Phase 15: Wallet & Financial Infrastructure Views
@@ -140,16 +134,18 @@ const MainRouterView: React.FC = () => {
     return <ProductDetailPage slug={slug} />;
   }
 
-  // Handle Public Merchant Store Routes /seller/store/:slug
-  if (currentPath.startsWith('/seller/store/')) {
-    const slug = currentPath.replace('/seller/store/', '').split('?')[0];
-    return <SellerStorePage slug={slug} />;
+  // Handle Admin Product Form Routes (/management/products/new & /management/products/edit/:productId)
+  if (currentPath === '/management/products/new') {
+    return <ManagementProductFormPage />;
+  }
+  if (currentPath.startsWith('/management/products/edit/')) {
+    const productId = currentPath.replace('/management/products/edit/', '').split('?')[0];
+    return <ManagementProductFormPage productId={productId} />;
   }
 
-  // Handle Edit Product Route /seller/products/edit/:productId
-  if (currentPath.startsWith('/seller/products/edit/')) {
-    const productId = currentPath.replace('/seller/products/edit/', '').split('?')[0];
-    return <ProductFormPage productId={productId} />;
+  // Decommission and block all legacy seller URLs with graceful redirection to marketplace
+  if (currentPath.startsWith('/seller')) {
+    return <MarketplaceHome />;
   }
 
   // Handle Single Order Detail Route /account/orders/:orderId
@@ -240,9 +236,6 @@ const MainRouterView: React.FC = () => {
     case '/account/transactions':
       return <CustomerTransactionsPage />;
 
-    case '/seller/orders':
-      return <SellerOrdersView />;
-
     // Services Routes
     case '/services':
       return <ServicesLandingPage />;
@@ -298,15 +291,6 @@ const MainRouterView: React.FC = () => {
 
     case '/settings/security':
       return <AccountSecurityPage />;
-
-    case '/seller/apply':
-      return <SellerApplyPage />;
-
-    case '/seller/dashboard':
-      return <SellerDashboard />;
-
-    case '/seller/products/new':
-      return <ProductFormPage />;
 
     // Academy & Scholarship Routes
     case '/academy':
@@ -406,9 +390,6 @@ const MainRouterView: React.FC = () => {
     case '/account/digital-library':
       return <CustomerDigitalLibraryPage />;
 
-    case '/seller/digital-products':
-      return <SellerDigitalProductsPage />;
-
     // Phase 15: Wallet & Financial Infrastructure Routes
     case '/wallet':
       return <WalletOverviewPage />;
@@ -464,17 +445,15 @@ export default function App() {
       <AuthProvider>
         <NotificationProvider>
           <MarketplaceProvider>
-            <SellerProvider>
-              <CommerceProvider>
-                <ServicesProvider>
-                  <AcademyProvider>
-                    <AffiliateProvider>
-                      <AppShell />
-                    </AffiliateProvider>
-                  </AcademyProvider>
-                </ServicesProvider>
-              </CommerceProvider>
-            </SellerProvider>
+            <CommerceProvider>
+              <ServicesProvider>
+                <AcademyProvider>
+                  <AffiliateProvider>
+                    <AppShell />
+                  </AffiliateProvider>
+                </AcademyProvider>
+              </ServicesProvider>
+            </CommerceProvider>
           </MarketplaceProvider>
         </NotificationProvider>
       </AuthProvider>

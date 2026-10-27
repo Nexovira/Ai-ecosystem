@@ -340,7 +340,7 @@ export const RegisterPage: React.FC = () => {
             <div className="mt-5 p-3 rounded-lg bg-[#011629] border border-[#0682F4]/20 flex items-start gap-2 text-[11px] text-[#CCD2D9]/70">
               <Shield className="w-4 h-4 text-[#08E6F9] shrink-0 mt-0.5" />
               <span>
-                Standard registration provisions a verified <strong>CUSTOMER</strong> account. Seller, Expert, and Administrative roles are subject to backend credentialing.
+                Standard registration provisions a verified <strong>CUSTOMER</strong> account. Expert, Affiliate, and Administrative roles are subject to backend credentialing.
               </span>
             </div>
 

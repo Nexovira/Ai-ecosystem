@@ -6,7 +6,6 @@ import {
   Share2,
   Bell,
   ShieldCheck,
-  Store,
   ExternalLink,
   ChevronRight,
   ArrowRight,
@@ -25,7 +24,6 @@ import { useAuth } from '../../context/AuthContext';
 import { useRouter } from '../../context/RouterContext';
 import { useMarketplace } from '../../context/MarketplaceContext';
 import { useNotifications } from '../../context/NotificationContext';
-import { useSeller } from '../../context/SellerContext';
 import { Container } from '../../components/common/Container';
 import { Button } from '../../components/common/Button';
 import { isManagementRole } from '../../types/management';
@@ -64,7 +62,6 @@ export const AccountPage: React.FC = () => {
   const { user, profile, loading: authLoading } = useAuth();
   const { navigate } = useRouter();
   const { formatPrice } = useMarketplace();
-  const { isVerifiedSeller } = useSeller();
   const { unreadCount } = useNotifications();
 
   const [summary, setSummary] = useState<EcosystemSummary | null>(null);

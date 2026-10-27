@@ -9,7 +9,6 @@ import {
   SlidersHorizontal,
   ShieldCheck,
   LayoutDashboard,
-  Store,
   ExternalLink,
   ChevronRight,
   ShieldAlert,
@@ -19,7 +18,6 @@ import { Container } from '../common/Container';
 import { useRouter } from '../../context/RouterContext';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
-import { useSeller } from '../../context/SellerContext';
 
 interface AccountLayoutProps {
   children: ReactNode;
@@ -37,7 +35,6 @@ export const AccountLayout: React.FC<AccountLayoutProps> = ({
   const { currentPath, navigate } = useRouter();
   const { user, profile } = useAuth();
   const { unreadCount } = useNotifications();
-  const { isVerifiedSeller } = useSeller();
 
   const isAdmin = ['ADMIN', 'SUPER_ADMIN', 'STAFF'].includes(profile?.role || '');
 
@@ -111,13 +108,6 @@ export const AccountLayout: React.FC<AccountLayoutProps> = ({
                     Customer
                   </span>
 
-                  {isVerifiedSeller && (
-                    <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-[#01213D] text-[#06C3F8] border border-[#0682F4]/40 flex items-center gap-1">
-                      <Store className="w-2.5 h-2.5" />
-                      Seller
-                    </span>
-                  )}
-
                   {profile?.role === 'EXPERT' && (
                     <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-[#01213D] text-[#4DDEEA] border border-[#26B2E2]/40">
                       Expert
@@ -129,15 +119,6 @@ export const AccountLayout: React.FC<AccountLayoutProps> = ({
 
             {/* Quick Actions */}
             <div className="flex flex-wrap items-center gap-2 self-start md:self-center">
-              {isVerifiedSeller && (
-                <button
-                  onClick={() => navigate('/seller/dashboard')}
-                  className="px-3.5 py-2 rounded-xl bg-[#01213D] hover:bg-[#0682F4]/20 border border-[#0682F4]/40 text-xs font-semibold text-white flex items-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <Store className="w-3.5 h-3.5 text-[#08E6F9]" />
-                  <span>Merchant Console</span>
-                </button>
-              )}
 
               {isAdmin && (
                 <button

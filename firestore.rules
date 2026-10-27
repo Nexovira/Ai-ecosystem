@@ -40,22 +40,11 @@ service cloud.firestore {
     }
 
     function isSeller() {
-      return isSignedIn() && (
-        isAdmin() ||
-        (
-          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['SELLER', 'ADMIN', 'SUPER_ADMIN']
-        ) ||
-        exists(/databases/$(database)/documents/sellers/$('seller-' + request.auth.uid))
-      );
+      return isAdmin();
     }
 
     function isSellerOrOwner(sellerId) {
-      return isSignedIn() && (
-        sellerId == request.auth.uid ||
-        sellerId == 'seller-' + request.auth.uid ||
-        isAdmin()
-      );
+      return isAdmin();
     }
 
     function isValidUserProfile(data) {
@@ -64,7 +53,7 @@ service cloud.firestore {
         data.userId is string && data.userId == request.auth.uid &&
         data.fullName is string && data.fullName.size() >= 2 && data.fullName.size() <= 100 &&
         data.email is string && data.email.size() <= 150 &&
-        data.role is string && data.role in ['CUSTOMER', 'SELLER', 'EXPERT', 'STAFF', 'ADMIN', 'SUPER_ADMIN'] &&
+        data.role is string && data.role in ['CUSTOMER', 'EXPERT', 'STAFF', 'ADMIN', 'SUPER_ADMIN'] &&
         data.accountStatus is string && data.accountStatus in ['ACTIVE', 'SUSPENDED', 'DISABLED'] &&
         (!('phoneNumber' in data) || (data.phoneNumber is string && data.phoneNumber.size() <= 25)) &&
         (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 500)) &&
@@ -113,92 +102,52 @@ service cloud.firestore {
       }
     }
 
-    // Seller Applications Collection
+    // Seller Applications Collection (Decommissioned - No client writes)
     match /sellerApplications/{applicationId} {
-      allow get: if isValidId(applicationId) && isSignedIn() &&
-        (applicationId == request.auth.uid || resource == null || resource.data.userId == request.auth.uid || isAdmin());
+      allow get: if isValidId(applicationId) && isSignedIn() && isAdmin();
       allow list: if isSignedIn() && isAdmin();
-
-      // Customer can submit application, but CANNOT self-approve
-      allow create: if isValidId(applicationId) && isSignedIn() &&
-        (applicationId == request.auth.uid || incoming().userId == request.auth.uid) &&
-        incoming().userId == request.auth.uid &&
-        incoming().status == 'PENDING_REVIEW' &&
-        incoming().submittedAt == request.time &&
-        incoming().updatedAt == request.time;
-
-      // Only administrators can review and approve applications
-      allow update: if isValidId(applicationId) && isSignedIn() && isAdmin() &&
-        incoming().updatedAt == request.time;
-
-      allow delete: if false;
+      allow write: if false;
     }
 
-    // Verified Seller Profiles
+    // Verified Seller Profiles (Preserved reference records, admin-only writes)
     match /sellers/{sellerId} {
-      allow get: if isValidId(sellerId) && (
-        resource == null ||
-        resource.data.verificationStatus == 'VERIFIED' ||
-        (isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin()))
-      );
+      allow get: if isValidId(sellerId);
       allow list: if true;
-
-      // Admin or system provisions verified profile
-      allow create: if isValidId(sellerId) && isSignedIn() &&
-        (isAdmin() || (isSeller() && incoming().userId == request.auth.uid));
-
-      // Seller can update public info, but CANNOT edit verification status or role
-      allow update: if isValidId(sellerId) && isSignedIn() &&
-        (
-          isAdmin() ||
-          (
-            resource.data.userId == request.auth.uid &&
-            incoming().userId == resource.data.userId &&
-            incoming().sellerId == resource.data.sellerId &&
-            incoming().verificationStatus == resource.data.verificationStatus &&
-            incoming().updatedAt == request.time &&
-            incoming().diff(existing()).affectedKeys().hasOnly([
-              'businessName', 'businessDescription', 'logoUrl', 'coverImageUrl',
-              'businessLocation', 'contactEmail', 'contactPhone', 'categories', 'updatedAt'
-            ])
-          )
-        );
-
-      allow delete: if false;
+      allow write: if isValidId(sellerId) && isSignedIn() && isAdmin();
     }
 
-    // Marketplace Products
+    // Marketplace Products (Admin-Authoritative Management)
     match /products/{productId} {
-      // Public can read published products. Sellers can read their own. Admins can read all.
+      // Public can read published products; Admins can read all.
       allow get: if isValidId(productId) && (
         resource == null ||
         resource.data.productStatus == 'PUBLISHED' ||
-        (isSignedIn() && (isSellerOrOwner(resource.data.sellerId) || isAdmin()))
+        (isSignedIn() && isAdmin())
       );
       allow list: if resource.data.productStatus == 'PUBLISHED' ||
-        (isSignedIn() && (isSellerOrOwner(resource.data.sellerId) || isAdmin()));
+        (isSignedIn() && isAdmin());
 
-      // Only verified sellers and admins can create products. Price and stock must be positive.
+      // Only administrators can create products. Price and stock must be positive.
       allow create: if isValidId(productId) &&
-        isSeller() &&
-        (isSellerOrOwner(incoming().sellerId) || isAdmin()) &&
+        isSignedIn() &&
+        isAdmin() &&
         incoming().price is number && incoming().price > 0 &&
         incoming().stockQuantity is number && incoming().stockQuantity >= 0 &&
         incoming().createdAt == request.time &&
         incoming().updatedAt == request.time;
 
-      // Sellers can only update their own products. Price and stock must be positive.
+      // Only administrators can update products.
       allow update: if isValidId(productId) &&
         isSignedIn() &&
-        (isAdmin() || (isSeller() && isSellerOrOwner(resource.data.sellerId) && incoming().sellerId == resource.data.sellerId)) &&
+        isAdmin() &&
         incoming().price is number && incoming().price > 0 &&
         incoming().stockQuantity is number && incoming().stockQuantity >= 0 &&
         incoming().updatedAt == request.time;
 
-      // Only product owner or admin can delete
+      // Only administrators can delete products.
       allow delete: if isValidId(productId) &&
         isSignedIn() &&
-        (isAdmin() || (isSeller() && isSellerOrOwner(resource.data.sellerId)));
+        isAdmin();
     }
 
     // Categories (Publicly readable, Admin managed)
@@ -227,12 +176,12 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Order Line Items (Customer can read/create their items; Seller can only read items belonging to them)
+    // Order Line Items (Customer can read their items; Admins can inspect all)
     match /orderItems/{orderItemId} {
       allow get: if isValidId(orderItemId) && isSignedIn() &&
-        (resource == null || resource.data.customerId == request.auth.uid || isSellerOrOwner(resource.data.sellerId) || isAdmin());
+        (resource == null || resource.data.customerId == request.auth.uid || isAdmin());
       allow list: if isSignedIn() &&
-        (resource.data.customerId == request.auth.uid || isSellerOrOwner(resource.data.sellerId) || isAdmin());
+        (resource.data.customerId == request.auth.uid || isAdmin());
       allow create: if isValidId(orderItemId) && isSignedIn() &&
         (incoming().customerId == request.auth.uid || isAdmin());
       allow update: if isValidId(orderItemId) && isSignedIn() &&
@@ -574,14 +523,12 @@ service cloud.firestore {
 
     match /digitalProducts/{productId} {
       allow get: if isValidId(productId) && (
+        resource == null ||
         resource.data.status == 'PUBLISHED' ||
-        !isSignedIn() ||
-        (isSignedIn() && (resource.data.sellerId == request.auth.uid || isAdmin()))
+        (isSignedIn() && isAdmin())
       );
-      allow list: if true;
-      allow write: if isValidId(productId) && (
-        !isSignedIn() || isSeller() || isAdmin()
-      );
+      allow list: if resource.data.status == 'PUBLISHED' || (isSignedIn() && isAdmin());
+      allow write: if isValidId(productId) && isSignedIn() && isAdmin();
     }
 
     match /digitalEntitlements/{entitlementId} {

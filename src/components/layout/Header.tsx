@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
-import { Menu, X, ArrowUpRight, User, LogOut, Shield, Store, Briefcase, Bell, Search, Wallet } from 'lucide-react';
+import { Menu, X, ArrowUpRight, User, LogOut, Shield, Briefcase, Bell, Search, Wallet } from 'lucide-react';
 import { Logo } from '../common/Logo';
 import { Button } from '../common/Button';
 import { NotificationBell } from '../notifications/NotificationBell';
 import { GlobalSearchBar } from '../search/GlobalSearchBar';
 import { useRouter } from '../../context/RouterContext';
 import { useAuth } from '../../context/AuthContext';
-import { useSeller } from '../../context/SellerContext';
 import { RoutePath } from '../../types';
 
 export const Header: React.FC = () => {
@@ -36,7 +35,6 @@ export const Header: React.FC = () => {
 
   const displayName = profile?.fullName || user?.displayName || user?.email?.split('@')[0] || 'Member';
   const isAdmin = profile?.role === 'ADMIN' || profile?.role === 'SUPER_ADMIN';
-  const { isVerifiedSeller } = useSeller();
 
   return (
     <header className="sticky top-0 z-40 w-full bg-[#01213D]/90 backdrop-blur-md border-b border-[#0682F4]/20 transition-colors">
@@ -86,29 +84,6 @@ export const Header: React.FC = () => {
             {user ? (
               // Authenticated User Controls
               <div className="flex items-center gap-3">
-                {isVerifiedSeller ? (
-                  <button
-                    onClick={() => handleNav('/seller/dashboard')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all cursor-pointer ${
-                      currentPath.startsWith('/seller')
-                        ? 'bg-[#08E6F9]/20 border-[#08E6F9] text-[#08E6F9]'
-                        : 'bg-[#011B33] border-[#0682F4]/40 text-[#CCD2D9] hover:border-[#08E6F9] hover:text-white'
-                    }`}
-                    title="Access Merchant Console"
-                  >
-                    <Store className="w-3.5 h-3.5 text-[#08E6F9]" />
-                    <span>Merchant Console</span>
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => handleNav('/seller/apply')}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[#0682F4]/30 bg-[#011B33] text-xs text-[#CCD2D9] hover:text-[#08E6F9] hover:border-[#08E6F9]/50 transition-colors cursor-pointer"
-                    title="Apply to become an authorized merchant"
-                  >
-                    <Store className="w-3.5 h-3.5 text-[#CCD2D9]" />
-                    <span>Sell</span>
-                  </button>
-                )}
 
                 {/* Expert Console for approved experts */}
                 {profile?.role === 'EXPERT' && (
@@ -220,13 +195,6 @@ export const Header: React.FC = () => {
               // Unauthenticated User Controls
               <>
                 <button
-                  onClick={() => handleNav('/seller/apply')}
-                  className="text-xs font-medium text-[#CCD2D9] hover:text-[#08E6F9] px-2.5 py-1.5 rounded-lg border border-[#0682F4]/30 bg-[#011B33] transition-colors cursor-pointer flex items-center gap-1.5"
-                >
-                  <Store className="w-3.5 h-3.5" />
-                  <span>Sell</span>
-                </button>
-                <button
                   onClick={() => handleNav('/signin')}
                   className="text-sm font-medium text-[#CCD2D9] hover:text-white px-3 py-2 rounded-lg transition-colors cursor-pointer"
                 >
@@ -327,35 +295,6 @@ export const Header: React.FC = () => {
             <div className="pt-4 mt-2 border-t border-[#0682F4]/20 flex flex-col gap-2.5">
               {user ? (
                 <>
-                  {isVerifiedSeller ? (
-                    <Button
-                      variant="primary"
-                      size="md"
-                      fullWidth
-                      onClick={() => handleNav('/seller/dashboard')}
-                      className="justify-between"
-                    >
-                      <span className="flex items-center gap-2">
-                        <Store className="w-4 h-4 text-[#01213D]" />
-                        <span>Merchant Console</span>
-                      </span>
-                      <ArrowUpRight className="w-4 h-4 text-[#01213D]" />
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="outline"
-                      size="md"
-                      fullWidth
-                      onClick={() => handleNav('/seller/apply')}
-                      className="justify-between text-[#08E6F9] border-[#08E6F9]/40"
-                    >
-                      <span className="flex items-center gap-2">
-                        <Store className="w-4 h-4 text-[#08E6F9]" />
-                        <span>Apply as Merchant / Sell</span>
-                      </span>
-                      <ArrowUpRight className="w-4 h-4" />
-                    </Button>
-                  )}
 
                   <Button
                     variant="secondary"

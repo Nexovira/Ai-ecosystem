@@ -287,7 +287,6 @@ export const ManagementUsersPage: React.FC = () => {
             >
               <option value="ALL">All Roles</option>
               <option value="CUSTOMER">CUSTOMER</option>
-              <option value="SELLER">SELLER</option>
               <option value="EXPERT">EXPERT</option>
               <option value="ADMIN">ADMIN</option>
               <option value="SUPER_ADMIN">SUPER ADMIN</option>
@@ -511,7 +510,6 @@ export const ManagementUsersPage: React.FC = () => {
                   className="w-full px-3 py-2 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white text-xs focus:outline-none focus:border-[#08E6F9]"
                 >
                   <option value="CUSTOMER">CUSTOMER (Standard consumer)</option>
-                  <option value="SELLER">SELLER (Marketplace vendor)</option>
                   <option value="EXPERT">EXPERT (Services specialist)</option>
                   <option value="SUPPORT">SUPPORT (Support specialist)</option>
                   <option value="CONTENT_MANAGER">CONTENT MANAGER (Products &amp; Academy)</option>

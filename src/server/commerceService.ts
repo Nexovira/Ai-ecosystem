@@ -340,7 +340,7 @@ export class CommerceService {
         message: `A new customer order including items from your merchant inventory has been initiated.`,
         relatedEntityType: 'ORDER',
         relatedEntityId: orderId,
-        actionUrl: '/seller/orders',
+        actionUrl: '/management/orders',
         priority: 'NORMAL',
         idempotencyKey: `seller_order_init_${orderId}_${sellerId}`,
       }).catch(() => {});
@@ -703,7 +703,7 @@ export class CommerceService {
         message: `Payment has been confirmed for order ${order.orderReference}. Please prepare items for dispatch.`,
         relatedEntityType: 'ORDER',
         relatedEntityId: targetOrderId,
-        actionUrl: '/seller/orders',
+        actionUrl: '/management/orders',
         priority: 'HIGH',
         idempotencyKey: `seller_pay_confirmed_${targetOrderId}_${sellerId}`,
       }).catch(() => {});

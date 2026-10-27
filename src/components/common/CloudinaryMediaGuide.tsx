@@ -52,10 +52,10 @@ export const CloudinaryMediaGuide: React.FC<CloudinaryMediaGuideProps> = ({
           </div>
           <div>
             <h2 className="font-display font-extrabold text-base sm:text-lg text-white">
-              How to Upload Product Images and Get Image URLs
+              Product Images &amp; Asset URLs Guide
             </h2>
             <p className="text-xs text-[#CCD2D9]/80 mt-0.5">
-              Official merchant guide for hosting external image and digital ebook assets via Cloudinary or Google Drive.
+              Official guide for hosting external image and digital ebook assets via Cloudinary or Google Drive.
             </p>
           </div>
         </div>
@@ -133,7 +133,7 @@ export const CloudinaryMediaGuide: React.FC<CloudinaryMediaGuideProps> = ({
               <li>
                 Find and copy its secure <strong>HTTPS delivery URL</strong>. Depending on the Cloudinary interface, this may be labelled as the <em>Secure URL</em>, <em>Direct Link</em>, or appear in the asset details panel.
               </li>
-              <li>Return to the <strong>NEXOVIRA seller dashboard</strong>.</li>
+              <li>Return to the <strong>Product Form</strong>.</li>
               <li>Paste the URL into the <strong>Primary Product Image URL</strong> field.</li>
               <li>Click <strong>Add Another Image</strong> to include up to 8 gallery views per product.</li>
               <li>Preview the images, choose the primary image, arrange the order using the controls, and save your product.</li>
@@ -157,7 +157,7 @@ export const CloudinaryMediaGuide: React.FC<CloudinaryMediaGuideProps> = ({
               </button>
             </div>
             <p className="text-[11px] text-[#CCD2D9]/70">
-              <strong>Note:</strong> You must replace <code className="text-[#08E6F9]">YOUR_CLOUD_NAME</code> and <code className="text-[#08E6F9]">YOUR_IMAGE_PATH</code> with your actual Cloudinary asset URL. Do not use this example string directly.
+              <strong>Note:</strong> Replace <code className="text-[#08E6F9]">YOUR_CLOUD_NAME</code> and <code className="text-[#08E6F9]">YOUR_IMAGE_PATH</code> with your actual Cloudinary asset URL. Do not use this example string directly.
             </p>
           </div>
 
@@ -180,31 +180,25 @@ export const CloudinaryMediaGuide: React.FC<CloudinaryMediaGuideProps> = ({
                 <div>
                   <h4 className="font-semibold text-white">URL does not load or displays an error:</h4>
                   <p className="text-[#CCD2D9]/80 mt-0.5">
-                    Ensure the URL starts with <code className="text-[#08E6F9]">https://</code> and is accessible in a private/incognito browser window without requiring you to log in to Cloudinary.
+                    Ensure the URL starts with <code className="text-[#08E6F9]">https://</code> and is accessible in a private/incognito browser window without requiring login.
                   </p>
                 </div>
                 <div>
                   <h4 className="font-semibold text-white">Image is private or inaccessible:</h4>
                   <p className="text-[#CCD2D9]/80 mt-0.5">
-                    In Cloudinary, verify the asset's access control mode is set to <strong>Public</strong> or <em>upload</em> (not authenticated or private).
+                    In Cloudinary, verify the asset's access control mode is set to <strong>Public</strong> or <em>upload</em>.
                   </p>
                 </div>
                 <div>
                   <h4 className="font-semibold text-white">Copying the wrong URL:</h4>
                   <p className="text-[#CCD2D9]/80 mt-0.5">
-                    Make sure you copied the image delivery URL (ending with your asset name or extension), not the Cloudinary management console URL (e.g. <code>cloudinary.com/console/...</code>).
+                    Make sure you copied the image delivery URL, not the Cloudinary management console URL.
                   </p>
                 </div>
                 <div>
                   <h4 className="font-semibold text-white">Image is too large or unsuitable:</h4>
                   <p className="text-[#CCD2D9]/80 mt-0.5">
                     Cloudinary allows on-the-fly transformations. You can add <code className="text-[#08E6F9]">/w_1200,c_limit,q_auto,f_auto/</code> in the URL path to optimize speed and quality automatically.
-                  </p>
-                </div>
-                <div>
-                  <h4 className="font-semibold text-white">Deleted or replaced Cloudinary asset:</h4>
-                  <p className="text-[#CCD2D9]/80 mt-0.5">
-                    If you delete or overwrite an asset on Cloudinary, update the product image URL in your NEXOVIRA seller dashboard to ensure customers always see the latest photo.
                   </p>
                 </div>
               </div>
@@ -215,17 +209,17 @@ export const CloudinaryMediaGuide: React.FC<CloudinaryMediaGuideProps> = ({
           <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 space-y-2">
             <div className="flex items-center gap-2 font-bold text-white">
               <ShieldAlert className="w-4 h-4 text-amber-400" />
-              <span>Important Cloudinary Security Rules</span>
+              <span>Important Asset Security Rules</span>
             </div>
             <ul className="list-disc list-outside ml-4 space-y-1 text-[11px] text-[#CCD2D9]">
               <li>
-                <strong>Never enter your Cloudinary API Secret:</strong> NEXOVIRA only needs the public HTTPS image delivery URL. Never paste API keys, secrets, or account credentials.
+                <strong>Never enter your Cloudinary API Secret:</strong> Only enter the public HTTPS image delivery URL. Never paste API keys, secrets, or account credentials.
               </li>
               <li>
-                <strong>Authorized Assets Only:</strong> Sellers must only submit product photos and assets they own or are legally authorized to publish.
+                <strong>Authorized Assets Only:</strong> Only submit photos and assets authorized for commercial distribution on the Nexovira catalog.
               </li>
               <li>
-                <strong>Public Accessibility:</strong> Product images displayed publicly must use a URL accessible to anyone without requiring seller login credentials.
+                <strong>Public Accessibility:</strong> Product images displayed publicly must use a URL accessible to anyone without requiring credentials.
               </li>
             </ul>
           </div>
@@ -241,7 +235,7 @@ export const CloudinaryMediaGuide: React.FC<CloudinaryMediaGuideProps> = ({
               <span>Hosting Ebooks &amp; Downloadable Digital Files</span>
             </h3>
             <p className="text-[#CCD2D9]">
-              Authors, creators, and digital sellers can host their ebook PDFs, EPUBs, blueprints, and templates on <strong>Google Drive</strong>, <strong>Dropbox</strong>, or <strong>Cloudinary Raw</strong>.
+              Upload downloadable PDFs, EPUBs, blueprints, and templates on <strong>Google Drive</strong>, <strong>Dropbox</strong>, or <strong>Cloudinary Raw</strong>.
             </p>
 
             <div className="space-y-2.5">

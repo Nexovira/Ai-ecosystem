@@ -14,11 +14,18 @@ import {
   Tag,
   Eye,
   SlidersHorizontal,
+  Plus,
+  Edit3,
+  Trash2,
 } from 'lucide-react';
+import { useRouter } from '../../context/RouterContext';
+import { doc, deleteDoc } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 import { Product } from '../../types/marketplace';
 
 export const ManagementProductsPage: React.FC = () => {
   const { user, profile } = useAuth();
+  const { navigate } = useRouter();
   const [products, setProducts] = useState<Product[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -34,6 +41,26 @@ export const ManagementProductsPage: React.FC = () => {
   const [moderationReason, setModerationReason] = useState('');
   const [submittingModeration, setSubmittingModeration] = useState(false);
   const [actionFeedback, setActionFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Delete Confirmation State
+  const [deleteConfirmProduct, setDeleteConfirmProduct] = useState<Product | null>(null);
+  const [deletingProduct, setDeletingProduct] = useState(false);
+
+  const handleDeleteProduct = async (p: Product) => {
+    if (!user || !profile) return;
+    setDeletingProduct(true);
+    try {
+      await deleteDoc(doc(db, 'products', p.productId));
+      setActionFeedback({ type: 'success', text: `Product [${p.name}] was deleted from the catalog.` });
+      setDeleteConfirmProduct(null);
+      fetchProducts();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to delete product';
+      setActionFeedback({ type: 'error', text: msg });
+    } finally {
+      setDeletingProduct(false);
+    }
+  };
 
   const fetchProducts = async () => {
     if (!user || !profile) return;
@@ -128,14 +155,23 @@ export const ManagementProductsPage: React.FC = () => {
       title="Marketplace Catalog Moderation Desk"
       subtitle="Authoritative product quality control, listing approval, publication states, and inventory compliance."
       actions={
-        <button
-          onClick={fetchProducts}
-          disabled={loading}
-          className="px-4 py-2 rounded-xl text-xs font-bold text-[#CCD2D9] hover:text-white bg-[#011B33] hover:bg-[#0682F4]/20 border border-[#0682F4]/30 transition flex items-center gap-2 cursor-pointer disabled:opacity-50"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-          Refresh Products ({total})
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => navigate('/management/products/new')}
+            className="px-4 py-2 rounded-xl text-xs font-bold text-[#01213D] bg-[#08E6F9] hover:bg-[#0682F4] hover:text-white transition flex items-center gap-1.5 cursor-pointer shadow-lg shadow-[#08E6F9]/20"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Add New Product</span>
+          </button>
+          <button
+            onClick={fetchProducts}
+            disabled={loading}
+            className="px-4 py-2 rounded-xl text-xs font-bold text-[#CCD2D9] hover:text-white bg-[#011B33] hover:bg-[#0682F4]/20 border border-[#0682F4]/30 transition flex items-center gap-2 cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            <span>Refresh ({total})</span>
+          </button>
+        </div>
       }
     >
       {actionFeedback && (
@@ -277,17 +313,33 @@ export const ManagementProductsPage: React.FC = () => {
                       </span>
                     </td>
                     <td className="px-4 py-3.5 text-right">
-                      <button
-                        onClick={() => {
-                          setSelectedProduct(p);
-                          setNewStatus(p.productStatus as any);
-                          setIsApproved(Boolean(p.isApproved));
-                          setModerationReason('');
-                        }}
-                        className="px-3 py-1 rounded-lg text-[11px] font-bold bg-[#01213D] hover:bg-[#0682F4]/20 border border-[#0682F4]/30 text-[#08E6F9] transition cursor-pointer"
-                      >
-                        Moderate
-                      </button>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => navigate(`/management/products/edit/${p.productId}`)}
+                          className="p-1.5 rounded-lg text-[11px] font-bold bg-[#01213D] hover:bg-[#0682F4]/20 border border-[#0682F4]/30 text-[#CCD2D9] hover:text-[#08E6F9] transition cursor-pointer"
+                          title="Edit Product"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedProduct(p);
+                            setNewStatus(p.productStatus as any);
+                            setIsApproved(Boolean(p.isApproved));
+                            setModerationReason('');
+                          }}
+                          className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-[#01213D] hover:bg-[#0682F4]/20 border border-[#0682F4]/30 text-[#08E6F9] transition cursor-pointer"
+                        >
+                          Moderate
+                        </button>
+                        <button
+                          onClick={() => setDeleteConfirmProduct(p)}
+                          className="p-1.5 rounded-lg text-[11px] font-bold bg-[#01213D] hover:bg-red-500/20 border border-red-500/30 text-red-400 transition cursor-pointer"
+                          title="Delete Product"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -381,6 +433,41 @@ export const ManagementProductsPage: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmProduct && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-[#011B33] border border-red-500/40 rounded-2xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-2 text-white font-bold text-sm">
+              <AlertCircle className="w-5 h-5 text-red-400" />
+              <span>Confirm Product Deletion</span>
+            </div>
+            <p className="text-xs text-[#CCD2D9] leading-relaxed">
+              Are you sure you want to permanently delete{' '}
+              <strong className="text-white">"{deleteConfirmProduct.name}"</strong> (SKU:{' '}
+              {deleteConfirmProduct.sku}) from the catalog? This action requires administrator authority and cannot be undone.
+            </p>
+            <div className="pt-2 flex items-center justify-end gap-2 border-t border-[#0682F4]/20">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmProduct(null)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-[#01213D] hover:bg-[#01213D]/80 border border-[#0682F4]/20 text-[#CCD2D9] transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deletingProduct}
+                onClick={() => handleDeleteProduct(deleteConfirmProduct)}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-500 text-white transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                {deletingProduct ? 'Deleting...' : 'Delete Permanently'}
+              </button>
+            </div>
           </div>
         </div>
       )}

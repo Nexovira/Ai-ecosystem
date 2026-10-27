@@ -15,9 +15,7 @@ export type RoutePath =
   | '/verify-email'
   | '/reset-password'
   | '/account'
-  | '/seller/apply'
-  | '/seller/dashboard'
-  | '/seller/products/new'
+  | '/management/products/new'
   | (string & {});
 
 export interface EcosystemPillar {
