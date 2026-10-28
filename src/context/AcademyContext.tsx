@@ -74,6 +74,7 @@ interface AcademyContextType {
   saveCourse: (data: Partial<Course>) => Promise<Course | null>;
   deleteCourse: (courseId: string) => Promise<boolean>;
   saveCategory: (data: Partial<CourseCategory>) => Promise<CourseCategory | null>;
+  deleteCategory: (categoryId: string) => Promise<{ success: boolean; mode?: 'DELETED' | 'DEACTIVATED'; message?: string; error?: string }>;
   managementPayments: Array<{
     payment: ScholarshipPayment;
     course: Course | null;
@@ -390,6 +391,27 @@ export const AcademyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   };
 
+  const deleteCategory = async (
+    categoryId: string
+  ): Promise<{ success: boolean; mode?: 'DELETED' | 'DEACTIVATED'; message?: string; error?: string }> => {
+    if (!isManagement) return { success: false, error: 'Unauthorized: Management role required.' };
+    try {
+      const res = await fetch(`/api/academy/categories/${encodeURIComponent(categoryId)}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+      const json = await res.json();
+      if (json.success) {
+        await fetchCategories(true);
+        return { success: true, mode: json.mode, message: json.message };
+      }
+      return { success: false, error: json.error || 'Failed to delete category' };
+    } catch (err) {
+      console.error('Error deleting category:', err);
+      return { success: false, error: 'Network error deleting category' };
+    }
+  };
+
   const fetchManagementPayments = useCallback(async () => {
     if (!isManagement) return;
     try {
@@ -458,6 +480,7 @@ export const AcademyProvider: React.FC<{ children: React.ReactNode }> = ({ child
         saveCourse,
         deleteCourse,
         saveCategory,
+        deleteCategory,
         managementPayments,
         fetchManagementPayments,
         managementNotifications,

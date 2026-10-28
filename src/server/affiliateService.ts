@@ -6,6 +6,7 @@ import {
   getDocs,
   setDoc,
   updateDoc,
+  deleteDoc,
 } from 'firebase/firestore';
 import {
   AffiliateStatus,
@@ -537,7 +538,47 @@ class AffiliateService {
     };
 
     this.offers.set(offerId, updated);
+    if (db) {
+      setDoc(doc(db, 'eligibleOffers', offerId), updated, { merge: true }).catch(() => null);
+    }
     return updated;
+  }
+
+  public deleteOffer(
+    offerId: string,
+    userRole: string
+  ): { success: boolean; mode: 'DELETED' | 'DEACTIVATED'; message: string } {
+    if (!['ADMIN', 'SUPER_ADMIN', 'STAFF'].includes(userRole)) {
+      throw new Error('Forbidden: Management access required.');
+    }
+
+    const offer = this.offers.get(offerId);
+    if (!offer) {
+      throw new Error(`Offer not found: ${offerId}`);
+    }
+
+    // Dependency check: If any commission records exist for this offer target, safely deactivate to preserve financial lineage
+    const hasCommissions = Array.from(this.commissions.values()).some((c) => c.sourceId === offer.targetId);
+    if (hasCommissions) {
+      offer.status = 'PAUSED';
+      offer.commissionEnabled = false;
+      offer.updatedAt = new Date().toISOString();
+      this.offers.set(offerId, offer);
+      if (db) {
+        setDoc(doc(db, 'eligibleOffers', offerId), { status: 'PAUSED', commissionEnabled: false, updatedAt: offer.updatedAt }, { merge: true }).catch(() => null);
+      }
+      return {
+        success: true,
+        mode: 'DEACTIVATED',
+        message: 'Offer deactivated to protect existing referral commission lineage.',
+      };
+    }
+
+    this.offers.delete(offerId);
+    if (db) {
+      deleteDoc(doc(db, 'eligibleOffers', offerId)).catch(() => null);
+    }
+    return { success: true, mode: 'DELETED', message: 'Offer permanently deleted.' };
   }
 
   public generateReferralLink(

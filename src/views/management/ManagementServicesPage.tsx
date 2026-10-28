@@ -5,7 +5,7 @@ import { useServices } from '../../context/ServicesContext';
 import { Button } from '../../components/common/Button';
 import { ManagementLayout } from '../../components/management/ManagementLayout';
 import { ProjectStatusBadge } from '../../components/services/ProjectStatusBadge';
-import { ProjectRequestStatus, ExpertVerificationStatus, ServiceCategory, ProjectRequest, ExpertProfile } from '../../types/services';
+import { ProjectRequestStatus, ExpertVerificationStatus, ServiceCategory, ProjectRequest, ExpertProfile, ExpertAvailability } from '../../types/services';
 import {
   Shield,
   Layers,
@@ -24,6 +24,7 @@ import {
   AlertCircle,
   Search,
   MessageSquare,
+  Trash2,
 } from 'lucide-react';
 
 export const ManagementServicesPage: React.FC = () => {
@@ -32,6 +33,7 @@ export const ManagementServicesPage: React.FC = () => {
   const {
     categories,
     saveCategory,
+    deleteCategory,
     managementRequests,
     loadingManagementRequests,
     fetchManagementRequests,
@@ -40,6 +42,8 @@ export const ManagementServicesPage: React.FC = () => {
     loadingManagementExperts,
     fetchManagementExperts,
     setExpertVerification,
+    updateExpertProfileByAdmin,
+    deleteExpertByAdmin,
     updateProjectStatus,
     auditLogs,
     loadingAuditLogs,
@@ -61,6 +65,7 @@ export const ManagementServicesPage: React.FC = () => {
   const [newStatus, setNewStatus] = useState<ProjectRequestStatus | ''>('');
   const [statusNote, setStatusNote] = useState<string>('');
   const [actionError, setActionError] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
   // Category modal state
   const [editingCategory, setEditingCategory] = useState<ServiceCategory | null>(null);
@@ -72,6 +77,27 @@ export const ManagementServicesPage: React.FC = () => {
   const [catActive, setCatActive] = useState<boolean>(true);
   const [catOrder, setCatOrder] = useState<number>(1);
   const [catSkills, setCatSkills] = useState<string>('');
+
+  // Category deletion confirmation state
+  const [deleteConfirmCategory, setDeleteConfirmCategory] = useState<ServiceCategory | null>(null);
+  const [deletingCategory, setDeletingCategory] = useState<boolean>(false);
+
+  // Expert edit modal state
+  const [editingExpert, setEditingExpert] = useState<ExpertProfile | null>(null);
+  const [expFullName, setExpFullName] = useState<string>('');
+  const [expTitle, setExpTitle] = useState<string>('');
+  const [expBio, setExpBio] = useState<string>('');
+  const [expSkills, setExpSkills] = useState<string>('');
+  const [expYears, setExpYears] = useState<number>(5);
+  const [expLocation, setExpLocation] = useState<string>('');
+  const [expImage, setExpImage] = useState<string>('');
+  const [expVisibility, setExpVisibility] = useState<'PUBLIC' | 'HIDDEN'>('PUBLIC');
+  const [expAvailability, setExpAvailability] = useState<ExpertAvailability>('AVAILABLE');
+  const [savingExpert, setSavingExpert] = useState<boolean>(false);
+
+  // Expert deletion confirmation state
+  const [deleteConfirmExpert, setDeleteConfirmExpert] = useState<ExpertProfile | null>(null);
+  const [deletingExpert, setDeletingExpert] = useState<boolean>(false);
 
   const isManagement = ['ADMIN', 'SUPER_ADMIN', 'STAFF'].includes(profile?.role || '');
 
@@ -191,6 +217,86 @@ export const ManagementServicesPage: React.FC = () => {
     setIsCategoryModalOpen(false);
   };
 
+  const handleExecuteDeleteCategory = async () => {
+    if (!deleteConfirmCategory) return;
+    try {
+      setDeletingCategory(true);
+      setActionError(null);
+      setActionSuccess(null);
+      const res = await deleteCategory(deleteConfirmCategory.id);
+      if (res.success) {
+        setActionSuccess(res.message || 'Category processed successfully.');
+        setDeleteConfirmCategory(null);
+      } else {
+        setActionError(res.error || 'Failed to delete category');
+      }
+    } finally {
+      setDeletingCategory(false);
+    }
+  };
+
+  const handleOpenEditExpert = (exp: ExpertProfile) => {
+    setEditingExpert(exp);
+    setExpFullName(exp.fullName);
+    setExpTitle(exp.professionalTitle);
+    setExpBio(exp.bio);
+    setExpSkills(exp.skills.join(', '));
+    setExpYears(exp.yearsOfExperience);
+    setExpLocation(exp.location);
+    setExpImage(exp.profileImage);
+    setExpVisibility(exp.profileVisibility);
+    setExpAvailability(exp.availabilityStatus);
+    setActionError(null);
+  };
+
+  const handleSaveExpert = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingExpert) return;
+    try {
+      setSavingExpert(true);
+      setActionError(null);
+      setActionSuccess(null);
+      const res = await updateExpertProfileByAdmin(editingExpert.expertId, {
+        fullName: expFullName.trim(),
+        professionalTitle: expTitle.trim(),
+        bio: expBio.trim(),
+        skills: expSkills.split(',').map((s) => s.trim()).filter(Boolean),
+        yearsOfExperience: Number(expYears) || 0,
+        location: expLocation.trim(),
+        profileImage: expImage.trim() || editingExpert.profileImage,
+        profileVisibility: expVisibility,
+        availabilityStatus: expAvailability,
+      });
+
+      if (res.success) {
+        setActionSuccess(`Specialist profile for ${expFullName} updated successfully.`);
+        setEditingExpert(null);
+      } else {
+        setActionError(res.error || 'Failed to update expert profile');
+      }
+    } finally {
+      setSavingExpert(false);
+    }
+  };
+
+  const handleExecuteDeleteExpert = async () => {
+    if (!deleteConfirmExpert) return;
+    try {
+      setDeletingExpert(true);
+      setActionError(null);
+      setActionSuccess(null);
+      const res = await deleteExpertByAdmin(deleteConfirmExpert.expertId);
+      if (res.success) {
+        setActionSuccess(res.message || 'Specialist profile processed successfully.');
+        setDeleteConfirmExpert(null);
+      } else {
+        setActionError(res.error || 'Failed to delete specialist profile');
+      }
+    } finally {
+      setDeletingExpert(false);
+    }
+  };
+
   return (
     <ManagementLayout
       activeRoute="/management/services"
@@ -215,6 +321,25 @@ export const ManagementServicesPage: React.FC = () => {
       }
     >
       <div className="space-y-6">
+        {actionSuccess && (
+          <div className="p-4 rounded-xl text-xs flex items-center justify-between border bg-emerald-500/10 border-emerald-500/40 text-emerald-300">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>{actionSuccess}</span>
+            </div>
+            <button onClick={() => setActionSuccess(null)} className="underline cursor-pointer">Dismiss</button>
+          </div>
+        )}
+        {actionError && (
+          <div className="p-4 rounded-xl text-xs flex items-center justify-between border bg-red-500/10 border-red-500/40 text-red-300">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{actionError}</span>
+            </div>
+            <button onClick={() => setActionError(null)} className="underline cursor-pointer">Dismiss</button>
+          </div>
+        )}
+
         {/* Tab Switcher */}
         <div className="my-8 flex flex-wrap gap-3 border-b border-[#0682F4]/20 pb-4">
           <button
@@ -410,6 +535,15 @@ export const ManagementServicesPage: React.FC = () => {
                     </div>
 
                     <div className="pt-3 border-t border-[#0682F4]/20 flex flex-wrap items-center gap-2">
+                      <button
+                        onClick={() => handleOpenEditExpert(exp)}
+                        className="px-3 py-1.5 rounded-lg bg-[#01213D] hover:bg-[#0682F4]/20 border border-[#0682F4]/30 text-[#08E6F9] text-xs font-semibold cursor-pointer flex items-center gap-1"
+                        title="Edit Specialist Profile"
+                      >
+                        <Edit2 className="w-3 h-3" />
+                        <span>Edit</span>
+                      </button>
+
                       {exp.verificationStatus !== 'VERIFIED' ? (
                         <button
                           onClick={() => setExpertVerification(exp.expertId, 'VERIFIED', 'PUBLIC')}
@@ -434,6 +568,15 @@ export const ManagementServicesPage: React.FC = () => {
                           Reject
                         </button>
                       )}
+
+                      <button
+                        onClick={() => setDeleteConfirmExpert(exp)}
+                        className="px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-semibold cursor-pointer flex items-center gap-1 ml-auto"
+                        title="Remove Specialist"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>Remove</span>
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -481,24 +624,35 @@ export const ManagementServicesPage: React.FC = () => {
                   </div>
 
                   <div className="pt-3 border-t border-[#0682F4]/20 flex items-center justify-between">
-                    <button
-                      onClick={() => handleOpenEditCategory(c)}
-                      className="text-xs font-semibold text-[#08E6F9] hover:underline flex items-center gap-1 cursor-pointer"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                      <span>Edit Details</span>
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => handleOpenEditCategory(c)}
+                        className="text-xs font-semibold text-[#08E6F9] hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                        <span>Edit Details</span>
+                      </button>
+
+                      <button
+                        onClick={() =>
+                          saveCategory({
+                            ...c,
+                            isActive: !c.isActive,
+                          })
+                        }
+                        className="text-xs text-[#CCD2D9] hover:text-white cursor-pointer"
+                      >
+                        {c.isActive ? 'Deactivate' : 'Activate'}
+                      </button>
+                    </div>
 
                     <button
-                      onClick={() =>
-                        saveCategory({
-                          ...c,
-                          isActive: !c.isActive,
-                        })
-                      }
-                      className="text-xs text-[#CCD2D9] hover:text-white cursor-pointer"
+                      onClick={() => setDeleteConfirmCategory(c)}
+                      className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1 cursor-pointer"
+                      title="Delete Category"
                     >
-                      {c.isActive ? 'Deactivate' : 'Activate'}
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete</span>
                     </button>
                   </div>
                 </div>
@@ -856,6 +1010,227 @@ export const ManagementServicesPage: React.FC = () => {
                   </Button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: DELETE CATEGORY CONFIRMATION */}
+        {deleteConfirmCategory && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+            <div className="bg-[#011B33] border border-red-500/40 rounded-3xl p-6 sm:p-8 max-w-md w-full space-y-5 shadow-2xl">
+              <div className="flex items-center gap-3 text-red-400">
+                <Trash2 className="w-6 h-6 shrink-0" />
+                <h3 className="text-base font-bold text-white">Delete Service Category?</h3>
+              </div>
+              <p className="text-xs text-[#CCD2D9] leading-relaxed">
+                You are about to remove <strong>{deleteConfirmCategory.name}</strong> (<span className="font-mono text-[#08E6F9]">{deleteConfirmCategory.slug}</span>).
+              </p>
+              <div className="p-3.5 rounded-xl bg-[#01213D] border border-[#0682F4]/20 text-[11px] text-[#CCD2D9] space-y-1">
+                <p className="font-semibold text-white">Authoritative Dependency Protection:</p>
+                <p>If active specialist profiles or client project requests reference this category, it will be safely deactivated (<span className="font-mono text-amber-400">isActive: false</span>) rather than orphaned. If no active bindings exist, it will be permanently removed.</p>
+              </div>
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#0682F4]/20">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setDeleteConfirmCategory(null)}
+                  disabled={deletingCategory}
+                >
+                  Cancel
+                </Button>
+                <button
+                  type="button"
+                  onClick={handleExecuteDeleteCategory}
+                  disabled={deletingCategory}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-500 text-white transition cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{deletingCategory ? 'Processing...' : 'Confirm Removal'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: EDIT EXPERT PROFILE */}
+        {editingExpert && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+            <div className="bg-[#011B33] border border-[#0682F4]/40 rounded-3xl p-6 sm:p-8 max-w-lg w-full space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between border-b border-[#0682F4]/20 pb-4">
+                <div className="flex items-center gap-2">
+                  <Edit2 className="w-5 h-5 text-[#08E6F9]" />
+                  <h2 className="text-lg font-bold text-white">Edit Specialist Profile</h2>
+                </div>
+                <button onClick={() => setEditingExpert(null)} className="text-[#CCD2D9] hover:text-white">✕</button>
+              </div>
+
+              <form onSubmit={handleSaveExpert} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-[#08E6F9] uppercase tracking-wider mb-1">
+                    Full Legal / Professional Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={expFullName}
+                    onChange={(e) => setExpFullName(e.target.value)}
+                    required
+                    className="w-full px-3.5 py-2 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white text-xs sm:text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#08E6F9] uppercase tracking-wider mb-1">
+                    Professional Title *
+                  </label>
+                  <input
+                    type="text"
+                    value={expTitle}
+                    onChange={(e) => setExpTitle(e.target.value)}
+                    required
+                    className="w-full px-3.5 py-2 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white text-xs sm:text-sm"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-[#08E6F9] uppercase tracking-wider mb-1">
+                      Experience (Years)
+                    </label>
+                    <input
+                      type="number"
+                      value={expYears}
+                      onChange={(e) => setExpYears(Number(e.target.value))}
+                      className="w-full px-3.5 py-2 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white text-xs sm:text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#08E6F9] uppercase tracking-wider mb-1">
+                      Location / Region
+                    </label>
+                    <input
+                      type="text"
+                      value={expLocation}
+                      onChange={(e) => setExpLocation(e.target.value)}
+                      className="w-full px-3.5 py-2 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white text-xs sm:text-sm"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#08E6F9] uppercase tracking-wider mb-1">
+                    Profile Avatar URL
+                  </label>
+                  <input
+                    type="url"
+                    value={expImage}
+                    onChange={(e) => setExpImage(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white text-xs sm:text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#08E6F9] uppercase tracking-wider mb-1">
+                    Skills (comma separated)
+                  </label>
+                  <input
+                    type="text"
+                    value={expSkills}
+                    onChange={(e) => setExpSkills(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white text-xs sm:text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#08E6F9] uppercase tracking-wider mb-1">
+                    Specialist Bio
+                  </label>
+                  <textarea
+                    value={expBio}
+                    onChange={(e) => setExpBio(e.target.value)}
+                    rows={3}
+                    className="w-full px-3.5 py-2 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white text-xs sm:text-sm"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-[#08E6F9] uppercase tracking-wider mb-1">
+                      Directory Visibility
+                    </label>
+                    <select
+                      value={expVisibility}
+                      onChange={(e) => setExpVisibility(e.target.value as any)}
+                      className="w-full px-3.5 py-2 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white text-xs"
+                    >
+                      <option value="PUBLIC">PUBLIC</option>
+                      <option value="HIDDEN">HIDDEN</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#08E6F9] uppercase tracking-wider mb-1">
+                      Availability Status
+                    </label>
+                    <select
+                      value={expAvailability}
+                      onChange={(e) => setExpAvailability(e.target.value as any)}
+                      className="w-full px-3.5 py-2 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white text-xs"
+                    >
+                      <option value="AVAILABLE">AVAILABLE</option>
+                      <option value="LIMITED">LIMITED</option>
+                      <option value="UNAVAILABLE">UNAVAILABLE</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-[#0682F4]/20 flex justify-end gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => setEditingExpert(null)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" variant="primary" size="sm" disabled={savingExpert}>
+                    {savingExpert ? 'Saving...' : 'Save Profile Changes'}
+                  </Button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: DELETE / SUSPEND EXPERT CONFIRMATION */}
+        {deleteConfirmExpert && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+            <div className="bg-[#011B33] border border-red-500/40 rounded-3xl p-6 sm:p-8 max-w-md w-full space-y-5 shadow-2xl">
+              <div className="flex items-center gap-3 text-red-400">
+                <Trash2 className="w-6 h-6 shrink-0" />
+                <h3 className="text-base font-bold text-white">Remove Specialist Profile?</h3>
+              </div>
+              <p className="text-xs text-[#CCD2D9] leading-relaxed">
+                You are about to remove <strong>{deleteConfirmExpert.fullName}</strong> ({deleteConfirmExpert.professionalTitle}).
+              </p>
+              <div className="p-3.5 rounded-xl bg-[#01213D] border border-[#0682F4]/20 text-[11px] text-[#CCD2D9] space-y-1">
+                <p className="font-semibold text-white">Authoritative Dependency Protection:</p>
+                <p>If this specialist has active, non-completed client project requests, their profile will be safely suspended and hidden (<span className="font-mono text-amber-400">SUSPENDED / HIDDEN</span>) so existing client milestone workflows remain intact. If no active projects exist, they will be permanently removed.</p>
+              </div>
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#0682F4]/20">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setDeleteConfirmExpert(null)}
+                  disabled={deletingExpert}
+                >
+                  Cancel
+                </Button>
+                <button
+                  type="button"
+                  onClick={handleExecuteDeleteExpert}
+                  disabled={deletingExpert}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-500 text-white transition cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{deletingExpert ? 'Processing...' : 'Confirm Removal'}</span>
+                </button>
+              </div>
             </div>
           </div>
         )}

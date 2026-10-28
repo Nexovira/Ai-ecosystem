@@ -21,6 +21,7 @@ interface ServicesContextType {
   loadingCategories: boolean;
   getCategoryBySlug: (slug: string) => ServiceCategory | undefined;
   saveCategory: (categoryData: Partial<ServiceCategory> & { name: string; slug: string }) => Promise<{ success: boolean; error?: string }>;
+  deleteCategory: (id: string) => Promise<{ success: boolean; mode?: 'DELETED' | 'DEACTIVATED'; message?: string; error?: string }>;
 
   experts: PublicExpert[];
   loadingExperts: boolean;
@@ -55,6 +56,8 @@ interface ServicesContextType {
   loadingManagementExperts: boolean;
   fetchManagementExperts: () => Promise<void>;
   setExpertVerification: (expertId: string, status: ExpertVerificationStatus, visibility?: 'PUBLIC' | 'HIDDEN') => Promise<{ success: boolean; error?: string }>;
+  updateExpertProfileByAdmin: (expertId: string, data: Partial<ExpertProfile>) => Promise<{ success: boolean; error?: string }>;
+  deleteExpertByAdmin: (expertId: string) => Promise<{ success: boolean; mode?: 'DELETED' | 'SUSPENDED'; message?: string; error?: string }>;
 
   auditLogs: AuditLog[];
   loadingAuditLogs: boolean;
@@ -553,6 +556,79 @@ export const ServicesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     [getAuthHeaders, fetchCategories]
   );
 
+  // Management: Delete / Deactivate service category
+  const deleteCategory = useCallback(
+    async (
+      id: string
+    ): Promise<{ success: boolean; mode?: 'DELETED' | 'DEACTIVATED'; message?: string; error?: string }> => {
+      try {
+        const res = await fetch(`/api/services/categories/${encodeURIComponent(id)}`, {
+          method: 'DELETE',
+          headers: getAuthHeaders(),
+        });
+        const result = await res.json();
+        if (result.success) {
+          fetchCategories();
+          return { success: true, mode: result.mode, message: result.message };
+        }
+        return { success: false, error: result.error || 'Failed to delete category' };
+      } catch (err: unknown) {
+        return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+      }
+    },
+    [getAuthHeaders, fetchCategories]
+  );
+
+  // Management: Update expert profile
+  const updateExpertProfileByAdmin = useCallback(
+    async (
+      expertId: string,
+      data: Partial<ExpertProfile>
+    ): Promise<{ success: boolean; error?: string }> => {
+      try {
+        const res = await fetch(`/api/services/management/experts/${encodeURIComponent(expertId)}`, {
+          method: 'PUT',
+          headers: getAuthHeaders(),
+          body: JSON.stringify(data),
+        });
+        const result = await res.json();
+        if (result.success) {
+          fetchManagementExperts();
+          fetchExperts();
+          return { success: true };
+        }
+        return { success: false, error: result.error || 'Failed to update expert profile' };
+      } catch (err: unknown) {
+        return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+      }
+    },
+    [getAuthHeaders, fetchManagementExperts, fetchExperts]
+  );
+
+  // Management: Delete / Suspend expert
+  const deleteExpertByAdmin = useCallback(
+    async (
+      expertId: string
+    ): Promise<{ success: boolean; mode?: 'DELETED' | 'SUSPENDED'; message?: string; error?: string }> => {
+      try {
+        const res = await fetch(`/api/services/management/experts/${encodeURIComponent(expertId)}`, {
+          method: 'DELETE',
+          headers: getAuthHeaders(),
+        });
+        const result = await res.json();
+        if (result.success) {
+          fetchManagementExperts();
+          fetchExperts();
+          return { success: true, mode: result.mode, message: result.message };
+        }
+        return { success: false, error: result.error || 'Failed to delete expert' };
+      } catch (err: unknown) {
+        return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+      }
+    },
+    [getAuthHeaders, fetchManagementExperts, fetchExperts]
+  );
+
   // Management: Fetch audit logs
   const fetchAuditLogs = useCallback(async () => {
     try {
@@ -645,6 +721,7 @@ export const ServicesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         loadingCategories,
         getCategoryBySlug,
         saveCategory,
+        deleteCategory,
 
         experts,
         loadingExperts,
@@ -679,6 +756,8 @@ export const ServicesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         loadingManagementExperts,
         fetchManagementExperts,
         setExpertVerification,
+        updateExpertProfileByAdmin,
+        deleteExpertByAdmin,
 
         auditLogs,
         loadingAuditLogs,

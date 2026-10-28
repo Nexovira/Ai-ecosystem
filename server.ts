@@ -305,6 +305,26 @@ async function startServer() {
   });
 
   /**
+   * DELETE /api/services/categories/:id
+   * Management delete or deactivate service category
+   */
+  app.delete('/api/services/categories/:id', async (req: Request, res: Response) => {
+    try {
+      const userRole = (req.headers['x-user-role'] as string) || '';
+      if (!['ADMIN', 'SUPER_ADMIN', 'STAFF'].includes(userRole)) {
+        return res.status(403).json({ success: false, error: 'Unauthorized: Management role required.' });
+      }
+
+      const result = await servicesService.deleteCategory(req.params.id);
+      return res.json(result);
+    } catch (err: unknown) {
+      console.error('Error deleting service category:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to delete category';
+      return res.status(400).json({ success: false, error: msg });
+    }
+  });
+
+  /**
    * GET /api/services/experts
    * Public expert directory with search, filter, and pagination
    */
@@ -726,6 +746,49 @@ async function startServer() {
   });
 
   /**
+   * PUT /api/services/management/experts/:id
+   * Management edit expert profile fields
+   */
+  app.put('/api/services/management/experts/:id', async (req: Request, res: Response) => {
+    try {
+      const userRole = (req.headers['x-user-role'] as string) || '';
+      if (!['ADMIN', 'SUPER_ADMIN', 'STAFF'].includes(userRole)) {
+        return res.status(403).json({ success: false, error: 'Unauthorized: Management role required.' });
+      }
+
+      const result = await servicesService.managementUpdateExpertProfile(req.params.id, req.body);
+      if (!result.success) {
+        return res.status(400).json(result);
+      }
+      return res.json(result);
+    } catch (err: unknown) {
+      console.error('Error updating expert profile:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to update expert profile';
+      return res.status(500).json({ success: false, error: msg });
+    }
+  });
+
+  /**
+   * DELETE /api/services/management/experts/:id
+   * Management safely suspend or permanently delete expert profile
+   */
+  app.delete('/api/services/management/experts/:id', async (req: Request, res: Response) => {
+    try {
+      const userRole = (req.headers['x-user-role'] as string) || '';
+      if (!['ADMIN', 'SUPER_ADMIN'].includes(userRole)) {
+        return res.status(403).json({ success: false, error: 'Unauthorized: Admin role required.' });
+      }
+
+      const result = await servicesService.managementDeleteExpert(req.params.id);
+      return res.json(result);
+    } catch (err: unknown) {
+      console.error('Error deleting expert profile:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to delete expert profile';
+      return res.status(400).json({ success: false, error: msg });
+    }
+  });
+
+  /**
    * GET /api/services/management/audit-logs
    * Management audit logging query endpoint
    */
@@ -903,6 +966,26 @@ Respond with a strictly valid JSON object matching this schema:
       console.error('Error saving course category:', err);
       const msg = err instanceof Error ? err.message : 'Failed to save category';
       return res.status(500).json({ success: false, error: msg });
+    }
+  });
+
+  /**
+   * DELETE /api/academy/categories/:id
+   * Management delete or deactivate course category
+   */
+  app.delete('/api/academy/categories/:id', async (req: Request, res: Response) => {
+    try {
+      const userRole = (req.headers['x-user-role'] as string) || '';
+      if (!['ADMIN', 'SUPER_ADMIN'].includes(userRole)) {
+        return res.status(403).json({ success: false, error: 'Unauthorized: Admin role required.' });
+      }
+
+      const result = academyService.deleteCategory(req.params.id, userRole);
+      return res.json(result);
+    } catch (err: unknown) {
+      console.error('Error deleting course category:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to delete category';
+      return res.status(400).json({ success: false, error: msg });
     }
   });
 
@@ -1737,6 +1820,18 @@ Respond with a strictly valid JSON object matching this schema:
       console.error('Error saving offer:', err);
       const msg = err instanceof Error ? err.message : 'Unauthorized';
       return res.status(403).json({ success: false, error: msg });
+    }
+  });
+
+  app.delete('/api/affiliates/management/offers/:offerId', async (req: Request, res: Response) => {
+    try {
+      const userRole = (req.headers['x-user-role'] as string) || '';
+      const result = affiliateService.deleteOffer(req.params.offerId, userRole);
+      return res.json(result);
+    } catch (err: unknown) {
+      console.error('Error deleting offer:', err);
+      const msg = err instanceof Error ? err.message : 'Unauthorized';
+      return res.status(400).json({ success: false, error: msg });
     }
   });
 
@@ -2697,6 +2792,97 @@ Respond with a strictly valid JSON object matching this schema:
     } catch (err: unknown) {
       console.error('Error updating product status:', err);
       return res.status(500).json({ success: false, error: 'Failed to update product status' });
+    }
+  });
+
+  /**
+   * GET /api/management/categories
+   * Retrieve all marketplace categories for management desk.
+   */
+  app.get('/api/management/categories', async (req: Request, res: Response) => {
+    try {
+      const authResult = requireManagementAuth(req, res, 'PRODUCTS_VIEW');
+      if (!authResult) return;
+
+      const categories = await commerceService.getAllCategoriesForManagement();
+      return res.json({ success: true, categories });
+    } catch (err: unknown) {
+      console.error('Error fetching management categories:', err);
+      return res.status(500).json({ success: false, error: 'Failed to retrieve categories' });
+    }
+  });
+
+  /**
+   * POST /api/management/categories
+   * Create or update marketplace category.
+   */
+  app.post('/api/management/categories', async (req: Request, res: Response) => {
+    try {
+      const authResult = requireManagementAuth(req, res, 'PRODUCTS_APPROVE');
+      if (!authResult) return;
+
+      const { name } = req.body;
+      if (!name || typeof name !== 'string' || name.trim().length === 0) {
+        return res.status(400).json({ success: false, error: 'Category name is required' });
+      }
+
+      const category = await commerceService.saveCategoryByManagement(req.body);
+
+      await managementService.recordAuditLog({
+        actorId: authResult.userId,
+        actorEmail: authResult.userEmail,
+        actorRole: authResult.userRole,
+        action: 'MARKETPLACE_CATEGORY_SAVE',
+        targetType: 'MARKETPLACE_CATEGORY',
+        targetId: category.categoryId,
+        newState: category,
+        reason: req.body.reason || 'Marketplace category updated/created via management desk',
+      });
+
+      return res.json({ success: true, category });
+    } catch (err: unknown) {
+      console.error('Error saving marketplace category:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to save category';
+      return res.status(400).json({ success: false, error: msg });
+    }
+  });
+
+  /**
+   * DELETE /api/management/categories/:categoryId
+   * Delete marketplace category with dependency check against products catalog.
+   */
+  app.delete('/api/management/categories/:categoryId', async (req: Request, res: Response) => {
+    try {
+      const authResult = requireManagementAuth(req, res, 'PRODUCTS_APPROVE');
+      if (!authResult) return;
+
+      const { categoryId } = req.params;
+      const result = await commerceService.deleteCategoryByManagement(categoryId);
+
+      if (!result.success) {
+        return res.status(400).json({
+          success: false,
+          inUseCount: result.inUseCount,
+          error: result.message,
+        });
+      }
+
+      await managementService.recordAuditLog({
+        actorId: authResult.userId,
+        actorEmail: authResult.userEmail,
+        actorRole: authResult.userRole,
+        action: 'MARKETPLACE_CATEGORY_DELETE',
+        targetType: 'MARKETPLACE_CATEGORY',
+        targetId: categoryId,
+        newState: { deleted: true },
+        reason: 'Authorized management category deletion',
+      });
+
+      return res.json({ success: true, message: result.message });
+    } catch (err: unknown) {
+      console.error('Error deleting marketplace category:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to delete category';
+      return res.status(400).json({ success: false, error: msg });
     }
   });
 
@@ -3764,6 +3950,136 @@ Respond with a strictly valid JSON object matching this schema:
     } catch (err: unknown) {
       console.error('Error fetching digital product reports:', err);
       return res.status(500).json({ success: false, error: 'Failed to load reports' });
+    }
+  });
+
+  /**
+   * POST /api/management/digital-products
+   * Create digital product directly from management desk.
+   */
+  app.post('/api/management/digital-products', async (req: Request, res: Response) => {
+    try {
+      const authResult = requireManagementAuth(req, res, 'DIGITAL_PRODUCTS_MANAGE');
+      if (!authResult) return;
+
+      const product = await digitalProductService.createDigitalProduct(
+        authResult.userId,
+        authResult.userEmail.split('@')[0],
+        'MANAGEMENT',
+        req.body
+      );
+
+      return res.status(201).json({ success: true, product });
+    } catch (err: unknown) {
+      console.error('Error creating digital product via management:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to create digital product';
+      return res.status(400).json({ success: false, error: msg });
+    }
+  });
+
+  /**
+   * PUT /api/management/digital-products/:productId
+   * Update digital product fields from management desk.
+   */
+  app.put('/api/management/digital-products/:productId', async (req: Request, res: Response) => {
+    try {
+      const authResult = requireManagementAuth(req, res, 'DIGITAL_PRODUCTS_MANAGE');
+      if (!authResult) return;
+
+      const { productId } = req.params;
+      const updated = await digitalProductService.updateDigitalProduct(
+        productId,
+        authResult.userId,
+        req.body,
+        true
+      );
+
+      return res.json({ success: true, product: updated });
+    } catch (err: unknown) {
+      console.error('Error updating digital product via management:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to update digital product';
+      return res.status(400).json({ success: false, error: msg });
+    }
+  });
+
+  /**
+   * DELETE /api/management/digital-products/:productId
+   * Delete or archive digital product from management desk.
+   */
+  app.delete('/api/management/digital-products/:productId', async (req: Request, res: Response) => {
+    try {
+      const authResult = requireManagementAuth(req, res, 'DIGITAL_PRODUCTS_MANAGE');
+      if (!authResult) return;
+
+      const { productId } = req.params;
+      const permanent = req.query.permanent === 'true';
+
+      const result = await digitalProductService.deleteDigitalProduct(
+        productId,
+        authResult.userId,
+        true,
+        permanent
+      );
+
+      return res.json(result);
+    } catch (err: unknown) {
+      console.error('Error deleting digital product via management:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to delete digital product';
+      return res.status(400).json({ success: false, error: msg });
+    }
+  });
+
+  /**
+   * GET /api/management/digital-products/categories
+   * List all digital product categories for management.
+   */
+  app.get('/api/management/digital-products/categories', async (req: Request, res: Response) => {
+    try {
+      const authResult = requireManagementAuth(req, res, 'DIGITAL_PRODUCTS_VIEW');
+      if (!authResult) return;
+
+      const categories = await digitalProductService.getAllCategoriesForManagement();
+      return res.json({ success: true, categories });
+    } catch (err: unknown) {
+      console.error('Error fetching management digital product categories:', err);
+      return res.status(500).json({ success: false, error: 'Failed to load categories' });
+    }
+  });
+
+  /**
+   * POST /api/management/digital-products/categories
+   * Create or update digital product category.
+   */
+  app.post('/api/management/digital-products/categories', async (req: Request, res: Response) => {
+    try {
+      const authResult = requireManagementAuth(req, res, 'DIGITAL_PRODUCTS_MANAGE');
+      if (!authResult) return;
+
+      const category = await digitalProductService.saveCategory(req.body, true);
+      return res.json({ success: true, category });
+    } catch (err: unknown) {
+      console.error('Error saving digital product category:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to save category';
+      return res.status(400).json({ success: false, error: msg });
+    }
+  });
+
+  /**
+   * DELETE /api/management/digital-products/categories/:categoryId
+   * Delete or deactivate digital product category.
+   */
+  app.delete('/api/management/digital-products/categories/:categoryId', async (req: Request, res: Response) => {
+    try {
+      const authResult = requireManagementAuth(req, res, 'DIGITAL_PRODUCTS_MANAGE');
+      if (!authResult) return;
+
+      const { categoryId } = req.params;
+      const result = await digitalProductService.deleteCategory(categoryId, true);
+      return res.json(result);
+    } catch (err: unknown) {
+      console.error('Error deleting digital product category:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to delete category';
+      return res.status(400).json({ success: false, error: msg });
     }
   });
 

@@ -48,6 +48,12 @@ interface MarketplaceContextType {
 
   // Currency helper
   formatPrice: (amount: number, currency?: string) => string;
+
+  // Category management & catalog sync
+  refreshCatalog: () => Promise<void>;
+  addCategory: (categoryData: Partial<Category>) => Promise<{ success: boolean; category?: Category; error?: string }>;
+  updateCategory: (categoryId: string, updates: Partial<Category>) => Promise<{ success: boolean; category?: Category; error?: string }>;
+  deleteCategory: (categoryId: string) => Promise<{ success: boolean; error?: string; inUseCount?: number }>;
 }
 
 const DEFAULT_FILTERS: MarketplaceFilterState = {
@@ -96,63 +102,130 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
     return [];
   });
 
-  // Load products & categories from Firestore (with automatic seeding of initial catalogue)
-  useEffect(() => {
-    let isMounted = true;
+  const refreshCatalog = useCallback(async () => {
+    setLoadingProducts(true);
+    try {
+      const productsCol = collection(db, 'products');
+      const prodSnap = await getDocs(query(productsCol, where('productStatus', '==', 'PUBLISHED')));
 
-    async function loadCatalog() {
-      setLoadingProducts(true);
-      try {
-        const productsCol = collection(db, 'products');
-        const prodSnap = await getDocs(query(productsCol, where('productStatus', '==', 'PUBLISHED')));
-
-        if (!prodSnap.empty && isMounted) {
-          const loadedProducts: Product[] = [];
-          prodSnap.forEach((d) => {
-            loadedProducts.push(d.data() as Product);
-          });
-          setProducts(loadedProducts);
-        } else {
-          // If Firestore collection is empty, seed with initial catalog
-          if (isMounted) {
-            setProducts(INITIAL_PRODUCTS);
-          }
-        }
-
-        // Categories
-        const catCol = collection(db, 'categories');
-        const catSnap = await getDocs(catCol);
-        if (!catSnap.empty && isMounted) {
-          const loadedCats: Category[] = [];
-          catSnap.forEach((d) => {
-            loadedCats.push(d.data() as Category);
-          });
-          loadedCats.sort((a, b) => a.order - b.order);
-          setCategories(loadedCats);
-        } else {
-          if (isMounted) {
-            setCategories(INITIAL_CATEGORIES);
-          }
-        }
-      } catch (err) {
-        console.warn('Marketplace using verified local catalog fallback:', err);
-        if (isMounted) {
-          setProducts(INITIAL_PRODUCTS);
-          setCategories(INITIAL_CATEGORIES);
-        }
-      } finally {
-        if (isMounted) {
-          setLoadingProducts(false);
-        }
+      if (!prodSnap.empty) {
+        const loadedProducts: Product[] = [];
+        prodSnap.forEach((d) => {
+          loadedProducts.push(d.data() as Product);
+        });
+        setProducts(loadedProducts);
+      } else {
+        setProducts(INITIAL_PRODUCTS);
       }
+
+      // Categories
+      const catCol = collection(db, 'categories');
+      const catSnap = await getDocs(catCol);
+      if (!catSnap.empty) {
+        const loadedCats: Category[] = [];
+        catSnap.forEach((d) => {
+          loadedCats.push(d.data() as Category);
+        });
+        loadedCats.sort((a, b) => a.order - b.order);
+        setCategories(loadedCats);
+      } else {
+        setCategories(INITIAL_CATEGORIES);
+      }
+    } catch (err) {
+      console.warn('Marketplace using verified local catalog fallback:', err);
+      setProducts(INITIAL_PRODUCTS);
+      setCategories(INITIAL_CATEGORIES);
+    } finally {
+      setLoadingProducts(false);
     }
-
-    loadCatalog();
-
-    return () => {
-      isMounted = false;
-    };
   }, []);
+
+  useEffect(() => {
+    refreshCatalog();
+  }, [refreshCatalog]);
+
+  const addCategory = useCallback(
+    async (data: Partial<Category>) => {
+      try {
+        const res = await fetch('/api/management/categories', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-id': user?.uid || '',
+            'x-user-role': profile?.role || '',
+            'x-user-email': user?.email || '',
+          },
+          body: JSON.stringify(data),
+        });
+        const resData = await res.json();
+        if (!res.ok || !resData.success) {
+          throw new Error(resData.error || 'Failed to add category');
+        }
+        await refreshCatalog();
+        return { success: true, category: resData.category };
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Error adding category';
+        return { success: false, error: msg };
+      }
+    },
+    [user, profile, refreshCatalog]
+  );
+
+  const updateCategory = useCallback(
+    async (categoryId: string, updates: Partial<Category>) => {
+      try {
+        const res = await fetch('/api/management/categories', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-id': user?.uid || '',
+            'x-user-role': profile?.role || '',
+            'x-user-email': user?.email || '',
+          },
+          body: JSON.stringify({ ...updates, categoryId }),
+        });
+        const resData = await res.json();
+        if (!res.ok || !resData.success) {
+          throw new Error(resData.error || 'Failed to update category');
+        }
+        await refreshCatalog();
+        return { success: true, category: resData.category };
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Error updating category';
+        return { success: false, error: msg };
+      }
+    },
+    [user, profile, refreshCatalog]
+  );
+
+  const deleteCategory = useCallback(
+    async (categoryId: string) => {
+      try {
+        const res = await fetch(`/api/management/categories/${categoryId}`, {
+          method: 'DELETE',
+          headers: {
+            'x-user-id': user?.uid || '',
+            'x-user-role': profile?.role || '',
+            'x-user-email': user?.email || '',
+          },
+        });
+        const resData = await res.json();
+        if (!res.ok || !resData.success) {
+          return {
+            success: false,
+            error: resData.error || 'Failed to delete category',
+            inUseCount: resData.inUseCount,
+          };
+        }
+        await refreshCatalog();
+        return { success: true };
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Error deleting category';
+        return { success: false, error: msg };
+      }
+    },
+    [user, profile, refreshCatalog]
+  );
 
   // Sync cart from Firestore for authenticated user
   useEffect(() => {
@@ -460,6 +533,10 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
         isWishlisted,
         toggleWishlist,
         formatPrice,
+        refreshCatalog,
+        addCategory,
+        updateCategory,
+        deleteCategory,
       }}
     >
       {children}

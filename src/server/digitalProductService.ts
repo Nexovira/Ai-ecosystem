@@ -5,6 +5,7 @@ import {
   getDocs,
   setDoc,
   updateDoc,
+  deleteDoc,
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import {
@@ -484,6 +485,68 @@ export class DigitalProductService {
     return null;
   }
 
+  public async getAllCategoriesForManagement(): Promise<DigitalProductCategory[]> {
+    await this.init();
+    return Array.from(this.categoriesCache.values()).sort((a, b) => a.displayOrder - b.displayOrder);
+  }
+
+  public async saveCategory(
+    categoryData: Partial<DigitalProductCategory>,
+    isAdmin: boolean
+  ): Promise<DigitalProductCategory> {
+    if (!isAdmin) throw new Error('Forbidden: Admin clearance required.');
+    await this.init();
+
+    const id = categoryData.id || `cat-dp-${Date.now()}`;
+    const slug = (categoryData.slug || categoryData.name || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '');
+    const existing = this.categoriesCache.get(id);
+
+    const category: DigitalProductCategory = {
+      id,
+      name: categoryData.name || existing?.name || 'New Category',
+      slug: slug || existing?.slug || 'category',
+      description: categoryData.description || existing?.description || '',
+      icon: categoryData.icon || existing?.icon || 'BookOpen',
+      isActive: categoryData.isActive !== undefined ? categoryData.isActive : (existing?.isActive ?? true),
+      displayOrder: categoryData.displayOrder ?? existing?.displayOrder ?? this.categoriesCache.size + 1,
+    };
+
+    this.categoriesCache.set(id, category);
+
+    if (db) {
+      setDoc(doc(db, 'digitalProductCategories', id), sanitizeFirestoreData(category), { merge: true }).catch(() => null);
+    }
+    return category;
+  }
+
+  public async deleteCategory(categoryId: string, isAdmin: boolean): Promise<{ success: boolean; mode?: 'DELETED' | 'DEACTIVATED'; message?: string }> {
+    if (!isAdmin) throw new Error('Forbidden: Admin clearance required.');
+    await this.init();
+
+    const category = this.categoriesCache.get(categoryId);
+    if (!category) throw new Error('Category not found');
+
+    const hasProducts = Array.from(this.productsCache.values()).some(
+      (p) => p.category === categoryId || p.categorySlug === category.slug
+    );
+    if (hasProducts) {
+      category.isActive = false;
+      if (db) {
+        setDoc(doc(db, 'digitalProductCategories', categoryId), { isActive: false }, { merge: true }).catch(() => null);
+      }
+      return { success: true, mode: 'DEACTIVATED', message: 'Category deactivated to preserve active publications.' };
+    }
+
+    this.categoriesCache.delete(categoryId);
+    if (db) {
+      deleteDoc(doc(db, 'digitalProductCategories', categoryId)).catch(() => null);
+    }
+    return { success: true, mode: 'DELETED', message: 'Category permanently removed.' };
+  }
+
   // ==========================================
   // PUBLIC DISCOVERY & PRODUCTS
   // ==========================================
@@ -816,8 +879,9 @@ export class DigitalProductService {
   public async deleteDigitalProduct(
     productId: string,
     creatorId: string,
-    isAdmin = false
-  ): Promise<{ success: boolean }> {
+    isAdmin = false,
+    permanent = false
+  ): Promise<{ success: boolean; mode: 'PERMANENT' | 'ARCHIVED'; reason?: string }> {
     await this.init();
 
     const product = this.productsCache.get(productId);
@@ -829,12 +893,24 @@ export class DigitalProductService {
       throw new Error('Forbidden: You do not own this digital product.');
     }
 
+    const hasEntitlements = Array.from(this.entitlementsCache.values()).some((e) => e.productId === productId);
+
+    if (permanent && isAdmin && !hasEntitlements) {
+      // Safe permanent deletion: 0 customer entitlements exist
+      this.productsCache.delete(productId);
+      if (db) {
+        deleteDoc(doc(db, 'digitalProducts', productId)).catch(() => null);
+      }
+      return { success: true, mode: 'PERMANENT' };
+    }
+
+    // Safe archival policy: Entitlements exist or archival requested
     const now = new Date().toISOString();
     product.status = 'ARCHIVED';
     product.visibility = 'PRIVATE';
     product.updatedAt = now;
 
-    if (db && auth && auth.currentUser) {
+    if (db) {
       try {
         await updateDoc(doc(db, 'digitalProducts', productId), {
           status: 'ARCHIVED',
@@ -846,7 +922,11 @@ export class DigitalProductService {
       }
     }
 
-    return { success: true };
+    const reason = hasEntitlements
+      ? 'Publication archived safely to preserve customer purchase and download entitlements.'
+      : 'Publication archived and withdrawn from marketplace.';
+
+    return { success: true, mode: 'ARCHIVED', reason };
   }
 
   // ==========================================

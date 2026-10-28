@@ -4,14 +4,15 @@ import {
   getDocs,
   setDoc,
   updateDoc,
+  deleteDoc,
   collection,
   query,
   where,
   writeBatch,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { INITIAL_PRODUCTS } from '../data/marketplaceCatalog';
-import { Product } from '../types/marketplace';
+import { INITIAL_PRODUCTS, INITIAL_CATEGORIES } from '../data/marketplaceCatalog';
+import { Product, Category } from '../types/marketplace';
 import {
   Order,
   OrderItem,
@@ -969,6 +970,106 @@ export class CommerceService {
     }
 
     return updated;
+  }
+
+  /**
+   * Retrieves all marketplace categories for management.
+   */
+  async getAllCategoriesForManagement(): Promise<Category[]> {
+    const list: Category[] = [...INITIAL_CATEGORIES];
+    try {
+      const snap = await getDocs(collection(db, 'categories')).catch(() => null);
+      if (snap && snap.docs) {
+        snap.forEach((d) => {
+          const c = d.data() as Category;
+          const idx = list.findIndex((existing) => existing.categoryId === c.categoryId);
+          if (idx >= 0) {
+            list[idx] = c;
+          } else {
+            list.push(c);
+          }
+        });
+      }
+    } catch {
+      // Graceful fallback
+    }
+    return list.sort((a, b) => (a.order || 0) - (b.order || 0));
+  }
+
+  /**
+   * Create or update a marketplace category.
+   */
+  async saveCategoryByManagement(data: Partial<Category>): Promise<Category> {
+    const categoryId =
+      data.categoryId ||
+      (data.name ? data.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') : `cat-${Date.now()}`);
+    const name = data.name || 'Unnamed Category';
+    const slug = data.slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    const description = data.description || '';
+    const iconName = data.iconName || 'Package';
+    const order = typeof data.order === 'number' ? data.order : 10;
+
+    const category: Category = {
+      categoryId,
+      name,
+      slug,
+      description,
+      iconName,
+      order,
+    };
+
+    try {
+      await setDoc(doc(db, 'categories', categoryId), sanitizeFirestoreData(category), { merge: true }).catch(() => null);
+    } catch (err) {
+      console.warn('Firestore category write notice:', err);
+    }
+
+    return category;
+  }
+
+  /**
+   * Delete a marketplace category with dependency checks against all marketplace products.
+   */
+  async deleteCategoryByManagement(
+    categoryId: string
+  ): Promise<{ success: boolean; inUseCount: number; message: string }> {
+    const products = await this.getAllProductsForManagement();
+    const catDoc = await getDoc(doc(db, 'categories', categoryId)).catch(() => null);
+    const catData =
+      catDoc && catDoc.exists()
+        ? (catDoc.data() as Category)
+        : INITIAL_CATEGORIES.find((c) => c.categoryId === categoryId);
+
+    const slug = catData?.slug || categoryId;
+    const name = catData?.name || categoryId;
+
+    // Check if any product references this category by categoryId, slug, or name
+    const boundProducts = products.filter(
+      (p) =>
+        p.category === categoryId ||
+        p.category === slug ||
+        p.category?.toLowerCase() === name.toLowerCase()
+    );
+
+    if (boundProducts.length > 0) {
+      return {
+        success: false,
+        inUseCount: boundProducts.length,
+        message: `Cannot delete category "${name}" because it is currently assigned to ${boundProducts.length} product(s) in the catalog. Please reassign or archive those products first.`,
+      };
+    }
+
+    try {
+      await deleteDoc(doc(db, 'categories', categoryId)).catch(() => null);
+    } catch (err) {
+      console.warn('Firestore category delete notice:', err);
+    }
+
+    return {
+      success: true,
+      inUseCount: 0,
+      message: `Category "${name}" was permanently deleted.`,
+    };
   }
 }
 

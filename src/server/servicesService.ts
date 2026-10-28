@@ -4,6 +4,7 @@ import {
   getDocs,
   setDoc,
   updateDoc,
+  deleteDoc,
   collection,
   query,
   where,
@@ -331,6 +332,52 @@ class ServicesService {
     return updatedCategory;
   }
 
+  async deleteCategory(id: string): Promise<{ success: boolean; mode: 'DELETED' | 'DEACTIVATED'; message: string }> {
+    const existing = this.categoriesCache.find((c) => c.id === id || c.slug === id);
+    if (!existing) {
+      throw new Error('Category not found');
+    }
+
+    // Check if any experts or requests are bound to this category
+    const hasExperts = this.expertsCache.some((e) =>
+      e.serviceCategories.some((sc) => sc.toLowerCase() === existing.slug.toLowerCase())
+    );
+    const hasRequests = this.requestsCache.some((r) =>
+      r.categorySlug.toLowerCase() === existing.slug.toLowerCase()
+    );
+
+    if (hasExperts || hasRequests) {
+      // Safe deactivation policy: Do not corrupt existing customer requests or expert credentials
+      existing.isActive = false;
+      existing.updatedAt = new Date().toISOString();
+      if (db) {
+        setDoc(doc(db, 'serviceCategories', existing.id), { isActive: false, updatedAt: existing.updatedAt }, { merge: true }).catch(() => null);
+      }
+      return {
+        success: true,
+        mode: 'DEACTIVATED',
+        message: 'Category deactivated to preserve active service requests and expert bindings.',
+      };
+    }
+
+    // Safe to delete permanently
+    this.categoriesCache = this.categoriesCache.filter((c) => c.id !== existing.id);
+    if (db) {
+      deleteDoc(doc(db, 'serviceCategories', existing.id)).catch(() => null);
+    }
+
+    this.recordAuditLog(
+      'MANAGEMENT',
+      'nexoviratech@gmail.com',
+      'CATEGORY_DELETED',
+      'CATEGORY',
+      existing.id,
+      JSON.stringify(existing)
+    );
+
+    return { success: true, mode: 'DELETED', message: 'Category permanently removed.' };
+  }
+
   // ==========================================
   // Expert Profile Operations
   // ==========================================
@@ -588,6 +635,105 @@ class ServicesService {
     );
 
     return { success: true };
+  }
+
+  async managementUpdateExpertProfile(
+    expertId: string,
+    payload: Partial<ExpertProfile>
+  ): Promise<{ success: boolean; profile?: ExpertProfile; error?: string }> {
+    const expert = this.expertsCache.find((e) => e.expertId === expertId);
+    if (!expert) {
+      return { success: false, error: 'Expert profile not found' };
+    }
+
+    const now = new Date().toISOString();
+    const updated: ExpertProfile = {
+      ...expert,
+      fullName: payload.fullName ? payload.fullName.trim() : expert.fullName,
+      professionalTitle: payload.professionalTitle ? payload.professionalTitle.trim() : expert.professionalTitle,
+      profileImage: payload.profileImage || expert.profileImage,
+      bio: payload.bio ? payload.bio.trim() : expert.bio,
+      skills: payload.skills || expert.skills,
+      serviceCategories: payload.serviceCategories || expert.serviceCategories,
+      yearsOfExperience: payload.yearsOfExperience !== undefined ? Number(payload.yearsOfExperience) : expert.yearsOfExperience,
+      portfolioLinks: payload.portfolioLinks || expert.portfolioLinks,
+      location: payload.location || expert.location,
+      languages: payload.languages || expert.languages,
+      availabilityStatus: payload.availabilityStatus || expert.availabilityStatus,
+      profileVisibility: payload.profileVisibility || expert.profileVisibility,
+      updatedAt: now,
+    };
+
+    const idx = this.expertsCache.findIndex((e) => e.expertId === expertId);
+    if (idx >= 0) this.expertsCache[idx] = updated;
+
+    if (db) {
+      setDoc(doc(db, 'experts', expertId), sanitizeFirestoreData(updated), { merge: true }).catch(() => null);
+    }
+
+    this.recordAuditLog(
+      'MANAGEMENT',
+      'nexoviratech@gmail.com',
+      'EXPERT_PROFILE_UPDATED',
+      'EXPERT',
+      expertId,
+      JSON.stringify(expert),
+      JSON.stringify(updated)
+    );
+
+    return { success: true, profile: updated };
+  }
+
+  async managementDeleteExpert(
+    expertId: string
+  ): Promise<{ success: boolean; mode: 'DELETED' | 'SUSPENDED'; message: string }> {
+    const expert = this.expertsCache.find((e) => e.expertId === expertId);
+    if (!expert) {
+      throw new Error('Expert profile not found');
+    }
+
+    // Check if expert has active non-completed project requests
+    const hasActiveRequests = this.requestsCache.some(
+      (r) => r.assignedExpertId === expert.expertId && !['COMPLETED', 'CANCELLED'].includes(r.status)
+    );
+
+    if (hasActiveRequests) {
+      // Safe suspension policy: Protect active customer deliverables
+      expert.verificationStatus = 'SUSPENDED';
+      expert.profileVisibility = 'HIDDEN';
+      expert.updatedAt = new Date().toISOString();
+
+      if (db) {
+        setDoc(doc(db, 'experts', expertId), {
+          verificationStatus: 'SUSPENDED',
+          profileVisibility: 'HIDDEN',
+          updatedAt: expert.updatedAt,
+        }, { merge: true }).catch(() => null);
+      }
+
+      return {
+        success: true,
+        mode: 'SUSPENDED',
+        message: 'Expert suspended and hidden from public directory due to active in-progress client projects.',
+      };
+    }
+
+    // Safe to delete permanently
+    this.expertsCache = this.expertsCache.filter((e) => e.expertId !== expertId);
+    if (db) {
+      deleteDoc(doc(db, 'experts', expertId)).catch(() => null);
+    }
+
+    this.recordAuditLog(
+      'MANAGEMENT',
+      'nexoviratech@gmail.com',
+      'EXPERT_PROFILE_DELETED',
+      'EXPERT',
+      expertId,
+      JSON.stringify(expert)
+    );
+
+    return { success: true, mode: 'DELETED', message: 'Expert profile permanently removed from the ecosystem.' };
   }
 
   // ==========================================

@@ -40,6 +40,7 @@ export const ManagementAcademyPage: React.FC = () => {
     saveCourse,
     deleteCourse,
     saveCategory,
+    deleteCategory,
     managementPayments,
     fetchManagementPayments,
     managementNotifications,
@@ -52,6 +53,9 @@ export const ManagementAcademyPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'applications' | 'courses' | 'categories' | 'payments' | 'notifications'>(
     'applications'
   );
+
+  // Action feedback
+  const [academyFeedback, setAcademyFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Filters for Applications Tab
   const [appSearch, setAppSearch] = useState('');
@@ -74,6 +78,8 @@ export const ManagementAcademyPage: React.FC = () => {
   // Category editing state
   const [editingCategory, setEditingCategory] = useState<Partial<CourseCategory> | null>(null);
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+  const [deleteConfirmCategory, setDeleteConfirmCategory] = useState<CourseCategory | null>(null);
+  const [deletingCategory, setDeletingCategory] = useState(false);
 
   useEffect(() => {
     if (!user || !isManagement) {
@@ -167,6 +173,23 @@ export const ManagementAcademyPage: React.FC = () => {
     }
   };
 
+  const handleExecuteDeleteCategory = async () => {
+    if (!deleteConfirmCategory) return;
+    try {
+      setDeletingCategory(true);
+      setAcademyFeedback(null);
+      const res = await deleteCategory(deleteConfirmCategory.id);
+      if (res.success) {
+        setAcademyFeedback({ type: 'success', message: res.message || `Discipline category ${deleteConfirmCategory.name} processed.` });
+        setDeleteConfirmCategory(null);
+      } else {
+        setAcademyFeedback({ type: 'error', message: res.error || 'Failed to delete category' });
+      }
+    } finally {
+      setDeletingCategory(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#01213D] text-white py-10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -189,6 +212,28 @@ export const ManagementAcademyPage: React.FC = () => {
             </span>
           </div>
         </div>
+
+        {academyFeedback && (
+          <div
+            className={`p-4 rounded-xl text-xs flex items-center justify-between border mb-6 ${
+              academyFeedback.type === 'success'
+                ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300'
+                : 'bg-red-500/10 border-red-500/40 text-red-300'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              {academyFeedback.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+              ) : (
+                <ShieldAlert className="w-4 h-4 shrink-0" />
+              )}
+              <span>{academyFeedback.message}</span>
+            </div>
+            <button onClick={() => setAcademyFeedback(null)} className="underline cursor-pointer">
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {/* Navigation Tabs */}
         <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-[#0682F4]/20 mb-8 no-scrollbar">
@@ -535,15 +580,25 @@ export const ManagementAcademyPage: React.FC = () => {
                   </div>
                   <p className="text-xs text-[#CCD2D9] line-clamp-2">{cat.description}</p>
                   <div className="text-[11px] text-[#08E6F9]">Order: #{cat.displayOrder}</div>
-                  <button
-                    onClick={() => {
-                      setEditingCategory({ ...cat });
-                      setIsCreatingCategory(false);
-                    }}
-                    className="w-full py-2 rounded-lg bg-[#0682F4]/20 hover:bg-[#0682F4] text-white hover:text-[#01213D] text-xs font-bold transition-all text-center"
-                  >
-                    Edit Category
-                  </button>
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      onClick={() => {
+                        setEditingCategory({ ...cat });
+                        setIsCreatingCategory(false);
+                      }}
+                      className="flex-1 py-2 rounded-lg bg-[#0682F4]/20 hover:bg-[#0682F4] text-white hover:text-[#01213D] text-xs font-bold transition-all text-center cursor-pointer flex items-center justify-center gap-1"
+                    >
+                      <Edit2 className="w-3 h-3" />
+                      <span>Edit</span>
+                    </button>
+                    <button
+                      onClick={() => setDeleteConfirmCategory(cat)}
+                      className="p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-bold transition-all text-center cursor-pointer"
+                      title="Delete Discipline Category"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1003,6 +1058,44 @@ export const ManagementAcademyPage: React.FC = () => {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: DELETE CATEGORY CONFIRMATION */}
+        {deleteConfirmCategory && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+            <div className="bg-[#011B33] border border-red-500/40 rounded-3xl p-6 sm:p-8 max-w-md w-full space-y-5 shadow-2xl">
+              <div className="flex items-center gap-3 text-red-400">
+                <Trash2 className="w-6 h-6 shrink-0" />
+                <h3 className="text-base font-bold text-white">Delete Discipline Category?</h3>
+              </div>
+              <p className="text-xs text-[#CCD2D9] leading-relaxed">
+                You are about to delete <strong>{deleteConfirmCategory.name}</strong> (<span className="font-mono text-[#08E6F9]">{deleteConfirmCategory.slug}</span>).
+              </p>
+              <div className="p-3.5 rounded-xl bg-[#01213D] border border-[#0682F4]/20 text-[11px] text-[#CCD2D9] space-y-1">
+                <p className="font-semibold text-white">Authoritative Dependency Protection:</p>
+                <p>If any courses or student scholarship applications are registered under this category, it will be safely deactivated (<span className="font-mono text-amber-400">isActive: false</span>) to protect enrollment history. If no courses depend on it, it will be permanently removed.</p>
+              </div>
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#0682F4]/20">
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirmCategory(null)}
+                  disabled={deletingCategory}
+                  className="px-4 py-2 rounded-xl bg-slate-800 text-xs font-bold text-[#CCD2D9] hover:text-white cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExecuteDeleteCategory}
+                  disabled={deletingCategory}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-500 text-white transition cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{deletingCategory ? 'Processing...' : 'Confirm Removal'}</span>
+                </button>
+              </div>
             </div>
           </div>
         )}

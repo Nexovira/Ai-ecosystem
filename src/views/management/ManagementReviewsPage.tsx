@@ -19,6 +19,7 @@ import {
   ShieldAlert,
   Clock,
   User,
+  Trash2,
 } from 'lucide-react';
 
 export const ManagementReviewsPage: React.FC = () => {
@@ -49,6 +50,40 @@ export const ManagementReviewsPage: React.FC = () => {
   const [resolutionAction, setResolutionAction] = useState<'RESOLVED' | 'DISMISSED'>('RESOLVED');
   const [resolutionNote, setResolutionNote] = useState('');
   const [submittingResolve, setSubmittingResolve] = useState(false);
+
+  // Hard delete confirmation state
+  const [deleteConfirmReview, setDeleteConfirmReview] = useState<Review | null>(null);
+  const [isDeletingReview, setIsDeletingReview] = useState(false);
+  const [reviewActionFeedback, setReviewActionFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const handleExecuteDeleteReview = async () => {
+    if (!deleteConfirmReview || !user) return;
+    try {
+      setIsDeletingReview(true);
+      setReviewActionFeedback(null);
+      const res = await fetch(`/api/reviews/${encodeURIComponent(deleteConfirmReview.id)}`, {
+        method: 'DELETE',
+        headers: {
+          'x-user-id': user.uid,
+          'x-user-role': profile?.role || 'ADMIN',
+          'x-user-email': user.email || '',
+        },
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to delete review');
+      }
+
+      setReviewActionFeedback({ type: 'success', message: `Review ID ${deleteConfirmReview.id} permanently purged.` });
+      setDeleteConfirmReview(null);
+      fetchManagementReviews();
+    } catch (err: unknown) {
+      setReviewActionFeedback({ type: 'error', message: err instanceof Error ? err.message : 'Error deleting review' });
+    } finally {
+      setIsDeletingReview(false);
+    }
+  };
 
   const fetchManagementReviews = useCallback(async () => {
     if (!user) return;
@@ -417,6 +452,16 @@ export const ManagementReviewsPage: React.FC = () => {
                             <span>Remove</span>
                           </button>
                         )}
+
+                        <button
+                          type="button"
+                          onClick={() => setDeleteConfirmReview(rev)}
+                          className="px-2.5 py-1 rounded-lg font-semibold text-red-400 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 transition cursor-pointer flex items-center gap-1"
+                          title="Purge review from database"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>Purge</span>
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -609,6 +654,43 @@ export const ManagementReviewsPage: React.FC = () => {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal 3: Hard Delete / Purge Review Confirmation */}
+        {deleteConfirmReview && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#000000]/80 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="relative w-full max-w-md rounded-2xl bg-[#011B33] border border-red-500/50 shadow-2xl p-6 space-y-4">
+              <div className="flex items-center gap-3 text-red-400">
+                <Trash2 className="w-6 h-6 shrink-0" />
+                <h3 className="text-base font-bold text-white">Permanently Delete Review?</h3>
+              </div>
+              <p className="text-xs text-[#CCD2D9] leading-relaxed">
+                This will permanently remove the review by <strong>{deleteConfirmReview.userDisplayName || 'User'}</strong> (<span className="font-mono text-[#08E6F9]">{deleteConfirmReview.id}</span>) and recalculate the aggregate rating score across the platform.
+              </p>
+              <div className="p-3 rounded-xl bg-[#01213D] border border-red-500/20 text-[11px] text-[#CCD2D9] italic">
+                "{deleteConfirmReview.body.slice(0, 100)}{deleteConfirmReview.body.length > 100 ? '...' : ''}"
+              </div>
+              <div className="flex items-center justify-end gap-3 pt-2 border-t border-[#0682F4]/20">
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirmReview(null)}
+                  disabled={isDeletingReview}
+                  className="px-3 py-1.5 text-xs text-[#CCD2D9] hover:text-white cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExecuteDeleteReview}
+                  disabled={isDeletingReview}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-500 text-white transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {isDeletingReview && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>{isDeletingReview ? 'Deleting...' : 'Confirm Permanent Deletion'}</span>
+                </button>
+              </div>
             </div>
           </div>
         )}

@@ -190,7 +190,42 @@ export class AcademyService {
     };
 
     this.categories.set(id, category);
+    if (db) {
+      setDoc(doc(db, 'courseCategories', id), sanitizeFirestoreData(category), { merge: true }).catch(() => null);
+    }
     return category;
+  }
+
+  public deleteCategory(id: string, userRole: string): { success: boolean; mode: 'DELETED' | 'DEACTIVATED'; message: string } {
+    if (!['ADMIN', 'SUPER_ADMIN'].includes(userRole)) {
+      throw new Error('Forbidden: Admin role required to delete course categories');
+    }
+
+    const category = this.categories.get(id) || Array.from(this.categories.values()).find((c) => c.slug === id);
+    if (!category) {
+      throw new Error(`Category not found: ${id}`);
+    }
+
+    // Check if any courses are attached to this category
+    const hasCourses = Array.from(this.courses.values()).some(
+      (c) => c.category.toLowerCase() === category.slug.toLowerCase() || c.category.toLowerCase() === category.id.toLowerCase()
+    );
+
+    if (hasCourses) {
+      category.isActive = false;
+      category.updatedAt = new Date().toISOString();
+      this.categories.set(category.id, category);
+      if (db) {
+        setDoc(doc(db, 'courseCategories', category.id), { isActive: false, updatedAt: category.updatedAt }, { merge: true }).catch(() => null);
+      }
+      return { success: true, mode: 'DEACTIVATED', message: 'Category deactivated to protect existing course enrollments.' };
+    }
+
+    this.categories.delete(category.id);
+    if (db) {
+      deleteDoc(doc(db, 'courseCategories', category.id)).catch(() => null);
+    }
+    return { success: true, mode: 'DELETED', message: 'Category permanently removed.' };
   }
 
   // ==========================================

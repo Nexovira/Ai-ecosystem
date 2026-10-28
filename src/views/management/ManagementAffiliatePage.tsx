@@ -20,6 +20,7 @@ import {
   Plus,
   RefreshCw,
   Lock,
+  Trash2,
 } from 'lucide-react';
 import {
   AffiliateApplication,
@@ -69,6 +70,36 @@ export const ManagementAffiliatePage: React.FC = () => {
     commissionValue: 10,
     status: 'ACTIVE',
   });
+  const [deleteConfirmOffer, setDeleteConfirmOffer] = useState<EligibleOffer | null>(null);
+  const [isDeletingOffer, setIsDeletingOffer] = useState(false);
+
+  const handleDeleteOffer = async () => {
+    if (!deleteConfirmOffer || !user || !profile?.role) return;
+    try {
+      setIsDeletingOffer(true);
+      setActionError(null);
+      setActionSuccess(null);
+      const res = await fetch(`/api/affiliates/management/offers/${encodeURIComponent(deleteConfirmOffer.offerId)}`, {
+        method: 'DELETE',
+        headers: {
+          'x-user-id': user.uid,
+          'x-user-role': profile.role,
+          'x-user-email': user.email || '',
+        },
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to remove offer');
+      }
+      setActionSuccess(data.message || `Offer "${deleteConfirmOffer.targetTitle}" processed.`);
+      setDeleteConfirmOffer(null);
+      loadManagementData();
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Error removing offer');
+    } finally {
+      setIsDeletingOffer(false);
+    }
+  };
 
   // Payout Review State
   const [selectedPayout, setSelectedPayout] = useState<PayoutRequest | null>(null);
@@ -604,16 +635,25 @@ export const ManagementAffiliatePage: React.FC = () => {
                     </div>
                   </div>
 
-                  <button
-                    onClick={() => {
-                      setEditingOffer(off);
-                      setShowOfferModal(true);
-                    }}
-                    className="w-full py-2 px-3 rounded-xl text-xs font-semibold text-[#CCD2D9] bg-[#01213D] hover:text-white border border-[#2B7EB5]/30 transition cursor-pointer flex items-center justify-center gap-1.5"
-                  >
-                    <Edit className="w-3.5 h-3.5" />
-                    Edit Offer Rules
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setEditingOffer(off);
+                        setShowOfferModal(true);
+                      }}
+                      className="flex-1 py-2 px-3 rounded-xl text-xs font-semibold text-[#CCD2D9] bg-[#01213D] hover:text-white border border-[#2B7EB5]/30 transition cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <Edit className="w-3.5 h-3.5" />
+                      <span>Edit Rules</span>
+                    </button>
+                    <button
+                      onClick={() => setDeleteConfirmOffer(off)}
+                      className="p-2 rounded-xl text-xs font-semibold text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 transition cursor-pointer flex items-center justify-center"
+                      title="Delete / Deactivate Offer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1073,6 +1113,44 @@ export const ManagementAffiliatePage: React.FC = () => {
                   className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-[#01213D] hover:bg-[#01213D]/80 border border-[#0682F4] cursor-pointer"
                 >
                   Confirm Reversal
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal 5: Delete / Archive Offer Confirmation */}
+        {deleteConfirmOffer && (
+          <div className="fixed inset-0 z-50 bg-[#000000]/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+            <div className="max-w-md w-full p-6 rounded-2xl bg-[#01213D] border border-red-500/40 shadow-2xl space-y-4">
+              <div className="flex items-center gap-3 text-red-400">
+                <Trash2 className="w-6 h-6 shrink-0" />
+                <h3 className="text-base font-bold text-white">Delete / Archive Offer?</h3>
+              </div>
+              <p className="text-xs text-[#CCD2D9] leading-relaxed">
+                You are about to remove referral offer: <strong>{deleteConfirmOffer.targetTitle}</strong> (<span className="font-mono text-[#08E6F9]">{deleteConfirmOffer.offerId}</span>).
+              </p>
+              <div className="p-3.5 rounded-xl bg-[#000000]/60 border border-[#2B7EB5]/20 text-[11px] text-[#CCD2D9] space-y-1">
+                <p className="font-semibold text-white">Lineage Protection:</p>
+                <p>If past customer orders or affiliate commissions are logged for this offer, it will be safely deactivated (<span className="font-mono text-amber-400">status: INACTIVE, commissionEnabled: false</span>) to preserve historical accounting and commission audit trails. If no referrals depend on it, it will be permanently deleted.</p>
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirmOffer(null)}
+                  disabled={isDeletingOffer}
+                  className="px-4 py-2 rounded-xl text-xs text-[#CCD2D9] hover:text-white cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteOffer}
+                  disabled={isDeletingOffer}
+                  className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-500 transition cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{isDeletingOffer ? 'Processing...' : 'Confirm Removal'}</span>
                 </button>
               </div>
             </div>
