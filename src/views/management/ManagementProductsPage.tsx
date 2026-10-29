@@ -75,10 +75,40 @@ export const ManagementProductsPage: React.FC = () => {
     if (!user || !profile) return;
     setDeletingProduct(true);
     try {
-      await deleteDoc(doc(db, 'products', p.productId));
-      setActionFeedback({ type: 'success', text: `Product [${p.name}] was deleted from the catalog.` });
+      const isDefaultAdmin =
+        user?.email?.toLowerCase() === 'nexoviratech@gmail.com' ||
+        user?.email?.toLowerCase() === 'nexovirasupport@gmail.com';
+      const effectiveRole = profile?.role || (isDefaultAdmin ? 'SUPER_ADMIN' : '');
+
+      // 1. Authoritative Backend Management Deletion
+      const res = await fetch(`/api/management/products/${p.productId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': user.uid,
+          'x-user-role': effectiveRole,
+          'x-user-email': user.email || '',
+        },
+      });
+
+      const resData = await res.json().catch(() => null);
+
+      // 2. Secondary client Firestore sync
+      await deleteDoc(doc(db, 'products', p.productId)).catch(() => null);
+
+      // 3. Immediately remove from local state so it vanishes from the UI instantaneously
+      setProducts((prev) => prev.filter((item) => item.productId !== p.productId));
+      setTotal((prev) => Math.max(0, prev - 1));
+
+      setActionFeedback({
+        type: 'success',
+        text: resData?.message || `Product [${p.name}] was deleted from the catalog.`,
+      });
       setDeleteConfirmProduct(null);
-      fetchProducts();
+
+      // 4. Re-fetch and synchronize marketplace context
+      await fetchProducts();
+      await refreshCatalog();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to delete product';
       setActionFeedback({ type: 'error', text: msg });

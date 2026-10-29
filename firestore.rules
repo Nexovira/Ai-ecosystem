@@ -150,6 +150,12 @@ service cloud.firestore {
         isAdmin();
     }
 
+    // Deleted Products Tombstones (Admin-only audit/tombstone records to prevent zombie resurrection)
+    match /deletedProducts/{productId} {
+      allow get, list: if isSignedIn() && isAdmin();
+      allow write: if isValidId(productId) && isSignedIn() && isAdmin();
+    }
+
     // Categories (Publicly readable, Admin managed)
     match /categories/{categoryId} {
       allow get: if isValidId(categoryId);

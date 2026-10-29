@@ -368,6 +368,27 @@
       },
       "required": ["productId", "sellerId", "name", "slug", "category", "brand", "price", "currency", "stockQuantity", "availabilityStatus", "productStatus", "createdAt", "updatedAt"]
     },
+    "DeletedProduct": {
+      "title": "DeletedProduct",
+      "description": "Tombstone record for deleted products to prevent re-hydration from static catalogues",
+      "type": "object",
+      "properties": {
+        "productId": {
+          "type": "string",
+          "description": "ID of deleted product"
+        },
+        "deletedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of deletion"
+        },
+        "deletedBy": {
+          "type": "string",
+          "description": "UID or email of actor who deleted product"
+        }
+      },
+      "required": ["productId", "deletedAt", "deletedBy"]
+    },
     "Category": {
       "title": "Category",
       "description": "Marketplace category hierarchy item",
@@ -971,7 +992,11 @@
     },
     "/products/{productId}": {
       "schema": "Product",
-      "description": "Marketplace products collection. Public can read published products. Verified sellers can manage their own products."
+      "description": "Marketplace products collection. Public can read published products. Management admins manage products."
+    },
+    "/deletedProducts/{productId}": {
+      "schema": "DeletedProduct",
+      "description": "Tombstones for deleted catalog products. Restricted strictly to administrators."
     },
     "/categories/{categoryId}": {
       "schema": "Category",

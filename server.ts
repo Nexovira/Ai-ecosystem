@@ -50,9 +50,8 @@ function getCookie(req: Request, name: string): string | undefined {
   return match ? decodeURIComponent(match[2]) : undefined;
 }
 
-async function startServer() {
+export async function createApp(): Promise<express.Express> {
   const app = express();
-  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
   // Middleware to preserve raw body for Webhook HMAC validation
   app.use(
@@ -65,6 +64,29 @@ async function startServer() {
   );
   // Apply Security Headers to every response
   app.use(applySecurityHeaders);
+
+  // Dynamic CORS & Preflight Handling for Cross-Domain Deployments (Vercel, Cloud Run, Custom Domains, Local Dev)
+  app.use((req: Request, res: Response, next) => {
+    const origin = req.headers.origin;
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      'Content-Type, Authorization, x-user-id, x-user-role, x-user-email, x-csrf-token, cache-control, pragma'
+    );
+    res.setHeader('Access-Control-Max-Age', '86400');
+
+    if (req.method === 'OPTIONS') {
+      res.status(204).end();
+      return;
+    }
+    next();
+  });
 
   // Rate Limiting on API endpoints
   app.use('/api', rateLimitMiddleware(apiRateLimiter));
@@ -2305,8 +2327,14 @@ Respond with a strictly valid JSON object matching this schema:
   ): { userId: string; userRole: ManagementRole; userEmail: string } | null {
     // Only accept authentication from secure request headers (never query string parameters)
     const userId = req.headers['x-user-id'] as string;
-    const userRole = (req.headers['x-user-role'] as string) || '';
-    const userEmail = (req.headers['x-user-email'] as string) || '';
+    let userRole = (req.headers['x-user-role'] as string) || '';
+    const userEmail = ((req.headers['x-user-email'] as string) || '').trim().toLowerCase();
+
+    // Platform owner safety: ensure primary administrator emails resolve to SUPER_ADMIN even if client profile is hydrating
+    const trustedAdminEmails = ['nexoviratech@gmail.com', 'nexovirasupport@gmail.com'];
+    if (trustedAdminEmails.includes(userEmail) && (!userRole || !isManagementRole(userRole))) {
+      userRole = 'SUPER_ADMIN';
+    }
 
     if (!userId || !isValidIdentifier(userId) || !userEmail || !isManagementRole(userRole)) {
       res.status(403).json({ success: false, error: 'Forbidden: Management authorization required.' });
@@ -2314,8 +2342,7 @@ Respond with a strictly valid JSON object matching this schema:
     }
 
     // Strict privilege verification: prevent ordinary users from escalating to SUPER_ADMIN/ADMIN via header manipulation
-    const trustedAdminEmails = ['nexoviratech@gmail.com', 'nexovirasupport@gmail.com'];
-    if (['SUPER_ADMIN', 'ADMIN'].includes(userRole) && !trustedAdminEmails.includes(userEmail.toLowerCase())) {
+    if (['SUPER_ADMIN', 'ADMIN'].includes(userRole) && !trustedAdminEmails.includes(userEmail)) {
       res.status(403).json({ success: false, error: 'Forbidden: Unverified administrator credentials.' });
       return null;
     }
@@ -2792,6 +2819,38 @@ Respond with a strictly valid JSON object matching this schema:
     } catch (err: unknown) {
       console.error('Error updating product status:', err);
       return res.status(500).json({ success: false, error: 'Failed to update product status' });
+    }
+  });
+
+  /**
+   * DELETE /api/management/products/:productId
+   * Delete or archive a product from the marketplace catalog by management.
+   */
+  app.delete('/api/management/products/:productId', async (req: Request, res: Response) => {
+    try {
+      const authResult = requireManagementAuth(req, res, 'PRODUCTS_APPROVE');
+      if (!authResult) return;
+
+      const { productId } = req.params;
+      const result = await commerceService.deleteProductByManagement(productId, authResult.userId);
+
+      // Audit log
+      await managementService.recordAuditLog({
+        actorId: authResult.userId,
+        actorEmail: authResult.userEmail,
+        actorRole: authResult.userRole,
+        action: 'PRODUCT_DELETE',
+        targetType: 'PRODUCT',
+        targetId: productId,
+        newState: { deleted: true, mode: result.mode },
+        reason: req.body?.reason || 'Administrator deleted product from catalog',
+      });
+
+      return res.json(result);
+    } catch (err: unknown) {
+      console.error('Error deleting product:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to delete product';
+      return res.status(500).json({ success: false, error: msg });
     }
   });
 
@@ -5529,12 +5588,24 @@ Respond with a strictly valid JSON object matching this schema:
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Nexovira Commerce Engine running at http://0.0.0.0:${PORT}`);
-  });
+  return app;
 }
 
-startServer().catch((err) => {
-  console.error('Fatal Server Startup Error:', err);
-  process.exit(1);
-});
+export const appPromise = createApp();
+
+export default appPromise;
+
+// Start standalone HTTP listener if not running in a Serverless environment (like Vercel or AWS Lambda)
+if (process.env.VERCEL !== '1' && !process.env.AWS_LAMBDA_FUNCTION_NAME) {
+  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+  appPromise
+    .then((app) => {
+      app.listen(PORT, '0.0.0.0', () => {
+        console.log(`Nexovira Commerce Engine running at http://0.0.0.0:${PORT}`);
+      });
+    })
+    .catch((err) => {
+      console.error('Fatal Server Startup Error:', err);
+      process.exit(1);
+    });
+}

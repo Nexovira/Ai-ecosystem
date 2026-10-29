@@ -37,11 +37,15 @@ export class CommerceService {
   private ordersCache: Order[] = [];
   private orderItemsCache: OrderItem[] = [];
   private paymentsCache: PaymentRecord[] = [];
+  private deletedProductIds: Set<string> = new Set();
 
   /**
    * Helper to retrieve a product by ID, checking Firestore first and fallback catalog second.
    */
   async getProductById(productId: string): Promise<Product | null> {
+    if (this.deletedProductIds.has(productId)) {
+      return null;
+    }
     try {
       const pDoc = await getDoc(doc(db, 'products', productId)).catch(() => null);
       if (pDoc && pDoc.exists()) {
@@ -920,25 +924,104 @@ export class CommerceService {
    * Retrieves all products across the marketplace catalog for management.
    */
   async getAllProductsForManagement(): Promise<Product[]> {
-    const list: Product[] = [...INITIAL_PRODUCTS];
+    // Load deleted product IDs if not already populated
+    try {
+      const delSnap = await getDocs(collection(db, 'deletedProducts')).catch(() => null);
+      if (delSnap && delSnap.docs) {
+        delSnap.forEach((d) => this.deletedProductIds.add(d.id));
+      }
+    } catch {
+      // Fallback
+    }
+
+    const list: Product[] = [];
+    const seenIds = new Set<string>();
+
     try {
       const snap = await getDocs(collection(db, 'products')).catch(() => null);
-      if (snap && snap.docs) {
+      if (snap && snap.docs && snap.docs.length > 0) {
         snap.forEach((d) => {
           const p = d.data() as Product;
-          const idx = list.findIndex((existing) => existing.productId === p.productId);
-          if (idx >= 0) {
-            list[idx] = p;
-          } else {
+          if (!this.deletedProductIds.has(p.productId)) {
             list.push(p);
+            seenIds.add(p.productId);
           }
         });
       }
     } catch {
-      // Graceful fallback to product catalog source of truth
+      // Fallback
+    }
+
+    // Merge baseline catalog products only if they have not been deleted or overwritten in Firestore
+    for (const initProd of INITIAL_PRODUCTS) {
+      if (!this.deletedProductIds.has(initProd.productId) && !seenIds.has(initProd.productId)) {
+        list.push(initProd);
+      }
     }
 
     return list;
+  }
+
+  /**
+   * Delete or safely archive a product by management.
+   * Checks order history to protect historical transaction integrity.
+   */
+  async deleteProductByManagement(
+    productId: string,
+    actorId: string
+  ): Promise<{ success: boolean; mode: 'DELETED' | 'ARCHIVED'; message: string }> {
+    const orders = await this.getAllOrdersForManagement();
+    const isReferencedInOrders = orders.some((o) =>
+      o.items && o.items.some((item) => item.productId === productId)
+    );
+
+    this.deletedProductIds.add(productId);
+
+    // Persist deleted product record in Firestore
+    try {
+      await setDoc(doc(db, 'deletedProducts', productId), {
+        productId,
+        deletedBy: actorId,
+        deletedAt: new Date().toISOString(),
+        mode: isReferencedInOrders ? 'ARCHIVED' : 'DELETED',
+      }).catch(() => null);
+    } catch (err) {
+      console.warn('Firestore deletedProducts write notice:', err);
+    }
+
+    if (isReferencedInOrders) {
+      // Soft-archive to preserve past orders and customer receipts
+      try {
+        await updateDoc(doc(db, 'products', productId), {
+          productStatus: 'ARCHIVED',
+          availabilityStatus: 'UNAVAILABLE',
+          isApproved: false,
+          updatedAt: new Date().toISOString(),
+          updatedBy: actorId,
+        }).catch(() => null);
+      } catch (err) {
+        console.warn('Firestore product archival notice:', err);
+      }
+
+      return {
+        success: true,
+        mode: 'ARCHIVED',
+        message: 'Product has recorded customer orders. Safely archived and hidden from public storefront and catalog.',
+      };
+    } else {
+      // Permanent removal from catalog
+      try {
+        await deleteDoc(doc(db, 'products', productId)).catch(() => null);
+      } catch (err) {
+        console.warn('Firestore product delete notice:', err);
+      }
+
+      return {
+        success: true,
+        mode: 'DELETED',
+        message: 'Product permanently removed from the catalog.',
+      };
+    }
   }
 
   /**
