@@ -60,8 +60,8 @@ export const VerifyEmailPage: React.FC = () => {
   const isAlreadyVerified = Boolean(user?.emailVerified || profile?.emailVerified);
 
   return (
-    <div className="py-16 sm:py-24 bg-[#01213D] min-h-[80vh] flex items-center justify-center relative overflow-hidden">
-      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[550px] h-[300px] bg-[#0682F4]/10 blur-[100px] rounded-full pointer-events-none" />
+    <div className="py-16 sm:py-24 bg-[#F7F8FA] min-h-[80vh] flex items-center justify-center relative overflow-hidden">
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[550px] h-[300px] bg-[#0169FA]/5 blur-[100px] rounded-full pointer-events-none" />
 
       <Container size="narrow" className="relative z-10">
         <div className="max-w-md mx-auto">
@@ -69,35 +69,35 @@ export const VerifyEmailPage: React.FC = () => {
           {/* Header */}
           <div className="text-center space-y-3 mb-8">
             <div className="inline-flex justify-center mb-1">
-              <Logo size="md" onClick={() => navigate('/')} />
+              <Logo size="md" variant="dark" onClick={() => navigate('/')} />
             </div>
-            <div className="text-xs font-mono tracking-widest text-[#08E6F9] uppercase">
+            <div className="text-xs font-semibold tracking-wider text-[#0169FA] uppercase">
               Security Protocol
             </div>
-            <h1 className="font-display font-extrabold text-2xl sm:text-3xl text-white tracking-tight">
-              VERIFY YOUR EMAIL
+            <h1 className="font-display font-extrabold text-2xl sm:text-3xl text-[#14283F] tracking-tight">
+              Verify Your Email
             </h1>
-            <p className="text-xs sm:text-sm text-[#CCD2D9]/80 font-normal">
+            <p className="text-xs sm:text-sm text-[#6B7280] font-normal">
               A verification link was dispatched to your inbox to protect your ecosystem identity.
             </p>
           </div>
 
           {/* Card */}
-          <div className="bg-[#011B33] border border-[#0682F4]/30 rounded-2xl p-6 sm:p-8 shadow-2xl shadow-[#011629]">
+          <div className="bg-white border border-[#E8EDF2] rounded-3xl p-6 sm:p-8 shadow-sm">
             
             {/* Feedback alert */}
             {feedback && (
               <div
-                className={`mb-5 p-3.5 rounded-lg border text-xs flex items-start gap-2.5 animate-in fade-in ${
+                className={`mb-5 p-3.5 rounded-xl border text-xs flex items-start gap-2.5 animate-in fade-in ${
                   feedback.type === 'success'
-                    ? 'bg-[#011629] border-[#08E6F9]/40 text-[#CCD2D9]'
-                    : 'bg-[#011629] border-red-500/40 text-red-200'
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                    : 'bg-red-50 border-red-200 text-red-800'
                 }`}
               >
                 {feedback.type === 'success' ? (
-                  <CheckCircle2 className="w-4 h-4 text-[#08E6F9] shrink-0 mt-0.5" />
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                 ) : (
-                  <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                  <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
                 )}
                 <span className="leading-relaxed">{feedback.message}</span>
               </div>
@@ -105,13 +105,13 @@ export const VerifyEmailPage: React.FC = () => {
 
             {isAlreadyVerified ? (
               <div className="text-center py-4 space-y-4">
-                <div className="w-12 h-12 rounded-full bg-[#0682F4]/20 border border-[#08E6F9] flex items-center justify-center text-[#08E6F9] mx-auto">
+                <div className="w-12 h-12 rounded-full bg-[#0169FA]/10 border border-[#0169FA]/20 flex items-center justify-center text-[#0169FA] mx-auto">
                   <ShieldCheck className="w-6 h-6" />
                 </div>
-                <h3 className="font-display font-bold text-lg text-white">
+                <h3 className="font-display font-bold text-lg text-[#14283F]">
                   Email Address Verified
                 </h3>
-                <p className="text-xs sm:text-sm text-[#CCD2D9]">
+                <p className="text-xs sm:text-sm text-[#6B7280]">
                   Your email ({userEmail}) has been confirmed. Full ecosystem account privileges are active.
                 </p>
                 <div className="pt-2">
@@ -128,18 +128,18 @@ export const VerifyEmailPage: React.FC = () => {
               </div>
             ) : (
               <div className="space-y-6 text-center">
-                <div className="w-14 h-14 rounded-2xl bg-[#01213D] border border-[#0682F4]/40 flex items-center justify-center text-[#08E6F9] mx-auto">
+                <div className="w-14 h-14 rounded-2xl bg-[#F7F8FA] border border-[#E8EDF2] flex items-center justify-center text-[#0169FA] mx-auto">
                   <Mail className="w-7 h-7" />
                 </div>
 
                 <div className="space-y-1.5">
-                  <span className="text-xs text-[#CCD2D9]/70 font-mono">Dispatched to:</span>
-                  <div className="text-sm font-semibold text-white font-mono break-all px-3 py-1.5 rounded-lg bg-[#01213D] border border-[#0682F4]/20">
+                  <span className="text-xs text-[#6B7280]">Dispatched to:</span>
+                  <div className="text-sm font-semibold text-[#14283F] font-mono break-all px-3 py-2 rounded-xl bg-[#F7F8FA] border border-[#E8EDF2]">
                     {userEmail}
                   </div>
                 </div>
 
-                <p className="text-xs text-[#CCD2D9]/80 leading-relaxed text-left">
+                <p className="text-xs text-[#6B7280] leading-relaxed text-left">
                   Please click the link inside the confirmation email to verify ownership.
                   If you don't see it, check your spam or promotions folder.
                 </p>
@@ -172,28 +172,26 @@ export const VerifyEmailPage: React.FC = () => {
                     disabled={cooldown > 0 || resending}
                     onClick={handleResend}
                   >
-                    {cooldown > 0
-                      ? `Resend in ${cooldown}s`
-                      : resending
-                      ? 'Sending...'
-                      : 'Resend Verification Email'}
+                    {resending ? (
+                      <span>Resending link...</span>
+                    ) : cooldown > 0 ? (
+                      <span>Resend available in {cooldown}s</span>
+                    ) : (
+                      <span className="flex items-center gap-2">
+                        <Mail className="w-4 h-4 text-[#0169FA]" />
+                        <span>Resend Verification Email</span>
+                      </span>
+                    )}
                   </Button>
                 </div>
 
-                <div className="pt-3 border-t border-[#0682F4]/20 flex items-center justify-between text-xs text-[#CCD2D9]">
-                  <button
-                    type="button"
-                    onClick={() => navigate('/account')}
-                    className="hover:text-white transition-colors"
-                  >
-                    Go to Account
-                  </button>
+                <div className="pt-2">
                   <button
                     type="button"
                     onClick={() => navigate('/signin')}
-                    className="text-[#08E6F9] hover:underline"
+                    className="text-xs text-[#6B7280] hover:text-[#0169FA] transition-colors cursor-pointer"
                   >
-                    Return to Sign In
+                    Switch Account / Sign In
                   </button>
                 </div>
               </div>

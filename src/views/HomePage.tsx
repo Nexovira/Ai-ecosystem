@@ -1,53 +1,60 @@
 import React from 'react';
 import { Hero } from '../components/home/Hero';
-import { AiInterfacePreview } from '../components/home/AiInterfacePreview';
-import { EcosystemSection } from '../components/home/EcosystemSection';
-import { TechServicesPreview } from '../components/home/TechServicesPreview';
-import { AcademyPreview } from '../components/home/AcademyPreview';
-import { MarketplacePreview } from '../components/home/MarketplacePreview';
-import { BrandStatement } from '../components/home/BrandStatement';
-import { FinalCta } from '../components/home/FinalCta';
+import { DiscoverSection } from '../components/home/DiscoverSection';
+import { HowItWorksSection } from '../components/home/HowItWorksSection';
+import { FeaturedMarketplaceSection } from '../components/home/FeaturedMarketplaceSection';
+import { TechServicesSection } from '../components/home/TechServicesSection';
+import { AcademySection } from '../components/home/AcademySection';
+import { AffiliateSection } from '../components/home/AffiliateSection';
+import { FinalCtaSection } from '../components/home/FinalCtaSection';
+import { useRouter } from '../context/RouterContext';
 
 interface HomePageProps {
-  onOpenGetStarted: () => void;
+  onOpenGetStarted?: () => void;
 }
 
 export const HomePage: React.FC<HomePageProps> = ({ onOpenGetStarted }) => {
-  const scrollToEcosystem = () => {
-    const el = document.getElementById('ecosystem');
+  const { navigate } = useRouter();
+
+  const scrollToDiscover = () => {
+    const el = document.getElementById('discover');
     if (el) {
       el.scrollIntoView({ behavior: 'smooth' });
+    } else {
+      navigate('/marketplace');
     }
   };
 
+  const handleGetStarted = onOpenGetStarted || (() => navigate('/register'));
+
   return (
     <main className="w-full">
-      {/* Hero Section */}
+      {/* SECTION B — HERO */}
       <Hero
-        onExplore={scrollToEcosystem}
-        onDiscover={scrollToEcosystem}
+        onExplore={scrollToDiscover}
+        onGetStarted={handleGetStarted}
       />
 
-      {/* AI Interface Preview */}
-      <AiInterfacePreview />
+      {/* SECTION C — DISCOVER NEXOVIRA */}
+      <DiscoverSection />
 
-      {/* Ecosystem Six Pillars Grid */}
-      <EcosystemSection />
+      {/* SECTION D — HOW NEXOVIRA WORKS */}
+      <HowItWorksSection />
 
-      {/* Tech & Services Preview */}
-      <TechServicesPreview />
+      {/* SECTION E — FEATURED MARKETPLACE */}
+      <FeaturedMarketplaceSection />
 
-      {/* Academy Preview */}
-      <AcademyPreview />
+      {/* SECTION F — TECH & DIGITAL SERVICES */}
+      <TechServicesSection />
 
-      {/* Marketplace Preview */}
-      <MarketplacePreview />
+      {/* SECTION G — NEXOVIRA ACADEMY */}
+      <AcademySection />
 
-      {/* Minimalist Brand Statement */}
-      <BrandStatement />
+      {/* SECTION H — AFFILIATE OPPORTUNITY */}
+      <AffiliateSection />
 
-      {/* Final Closing Call To Action */}
-      <FinalCta onExplore={scrollToEcosystem} />
+      {/* SECTION I — FINAL CALL TO ACTION */}
+      <FinalCtaSection onGetStarted={handleGetStarted} />
     </main>
   );
 };

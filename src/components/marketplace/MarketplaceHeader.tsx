@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { Search, ShoppingBag, Heart, User, X, SlidersHorizontal, ArrowLeft } from 'lucide-react';
-import { Logo } from '../common/Logo';
 import { useMarketplace } from '../../context/MarketplaceContext';
 import { useAuth } from '../../context/AuthContext';
 import { useRouter } from '../../context/RouterContext';
@@ -33,7 +32,7 @@ export const MarketplaceHeader: React.FC<MarketplaceHeaderProps> = ({
   };
 
   return (
-    <div className="w-full bg-[#011B33] border-b border-[#0682F4]/20 sticky top-18 z-30 shadow-md">
+    <div className="w-full bg-white border-b border-[#E8EDF2] sticky top-16 sm:top-18 z-30 shadow-xs">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-3">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
           
@@ -41,21 +40,21 @@ export const MarketplaceHeader: React.FC<MarketplaceHeaderProps> = ({
           <div className="flex items-center justify-between md:justify-start gap-4">
             <button
               onClick={() => navigate('/')}
-              className="inline-flex items-center gap-1 text-xs text-[#CCD2D9] hover:text-[#08E6F9] transition-colors cursor-pointer group"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#6B7280] hover:text-[#0169FA] transition-colors cursor-pointer group"
               aria-label="Return to Nexovira Home"
             >
-              <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform text-[#08E6F9]" />
-              <span className="hidden sm:inline">Ecosystem</span>
+              <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform text-[#0169FA]" />
+              <span className="hidden sm:inline">Home</span>
             </button>
 
-            <span className="text-[#0682F4]/40 hidden sm:inline">|</span>
+            <span className="text-[#E8EDF2] hidden sm:inline">|</span>
 
             <div className="flex items-center gap-2">
-              <span className="font-display font-bold text-sm sm:text-base text-white tracking-wide">
+              <span className="font-display font-bold text-sm sm:text-base text-[#14283F] tracking-wide">
                 MARKETPLACE
               </span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#01213D] text-[#08E6F9] border border-[#0682F4]/30">
-                Phase 3 Catalog
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-[#F7F8FA] text-[#0169FA] border border-[#E8EDF2] font-semibold">
+                Official Catalog
               </span>
             </div>
 
@@ -65,7 +64,7 @@ export const MarketplaceHeader: React.FC<MarketplaceHeaderProps> = ({
                 <button
                   type="button"
                   onClick={onToggleMobileFilters}
-                  className="p-2 rounded-lg bg-[#01213D] border border-[#0682F4]/30 text-[#CCD2D9] hover:text-[#08E6F9]"
+                  className="p-2 rounded-xl bg-white border border-[#E8EDF2] text-[#14283F] hover:text-[#0169FA]"
                   aria-label="Filter products"
                 >
                   <SlidersHorizontal className="w-4 h-4" />
@@ -74,12 +73,12 @@ export const MarketplaceHeader: React.FC<MarketplaceHeaderProps> = ({
               <button
                 type="button"
                 onClick={onOpenWishlist}
-                className="p-2 rounded-lg bg-[#01213D] border border-[#0682F4]/30 text-[#CCD2D9] hover:text-[#08E6F9] relative"
+                className="p-2 rounded-xl bg-white border border-[#E8EDF2] text-[#14283F] hover:text-[#0169FA] relative"
                 aria-label="View Wishlist"
               >
                 <Heart className="w-4 h-4" />
                 {wishlist.length > 0 && (
-                  <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#0682F4] text-white text-[10px] font-bold flex items-center justify-center">
+                  <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#0169FA] text-white text-[10px] font-bold flex items-center justify-center">
                     {wishlist.length}
                   </span>
                 )}
@@ -87,12 +86,12 @@ export const MarketplaceHeader: React.FC<MarketplaceHeaderProps> = ({
               <button
                 type="button"
                 onClick={onOpenCart}
-                className="p-2 rounded-lg bg-[#01213D] border border-[#0682F4]/30 text-[#08E6F9] relative"
+                className="p-2 rounded-xl bg-white border border-[#E8EDF2] text-[#0169FA] relative"
                 aria-label="View Shopping Cart"
               >
                 <ShoppingBag className="w-4 h-4" />
                 {cartCount > 0 && (
-                  <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#08E6F9] text-[#01213D] text-[10px] font-bold flex items-center justify-center">
+                  <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#0169FA] text-white text-[10px] font-bold flex items-center justify-center">
                     {cartCount}
                   </span>
                 )}
@@ -103,19 +102,19 @@ export const MarketplaceHeader: React.FC<MarketplaceHeaderProps> = ({
           {/* Central Search Bar */}
           <div className="flex-1 max-w-2xl">
             <form onSubmit={handleSearchSubmit} className="relative flex items-center">
-              <Search className="absolute left-3.5 w-4 h-4 text-[#0682F4] pointer-events-none" />
+              <Search className="absolute left-3.5 w-4 h-4 text-[#0169FA] pointer-events-none" />
               <input
                 type="text"
                 value={localSearch}
                 onChange={(e) => setLocalSearch(e.target.value)}
                 placeholder="Search products, brands and categories..."
-                className="w-full bg-[#01213D] text-white text-xs sm:text-sm pl-10 pr-16 py-2 rounded-lg border border-[#0682F4]/30 focus:border-[#08E6F9] focus:outline-none focus:ring-1 focus:ring-[#08E6F9] placeholder:text-[#CCD2D9]/40 transition-colors"
+                className="w-full bg-[#F7F8FA] text-[#14283F] text-xs sm:text-sm pl-10 pr-20 py-2 rounded-xl border border-[#E8EDF2] focus:border-[#0169FA] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#0169FA] placeholder:text-[#6B7280] transition-colors"
               />
               {localSearch && (
                 <button
                   type="button"
                   onClick={handleClearSearch}
-                  className="absolute right-12 text-[#CCD2D9]/60 hover:text-white p-1"
+                  className="absolute right-14 text-[#6B7280] hover:text-[#14283F] p-1"
                   aria-label="Clear search query"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -123,7 +122,7 @@ export const MarketplaceHeader: React.FC<MarketplaceHeaderProps> = ({
               )}
               <button
                 type="submit"
-                className="absolute right-1.5 px-2.5 py-1 text-xs font-medium rounded bg-[#0682F4] hover:bg-[#08E6F9] text-white hover:text-[#01213D] transition-colors cursor-pointer"
+                className="absolute right-1.5 px-3 py-1 text-xs font-semibold rounded-lg bg-gradient-to-r from-[#08B3F8] to-[#0169FA] text-white hover:opacity-95 transition-opacity cursor-pointer shadow-xs"
               >
                 Search
               </button>
@@ -134,12 +133,12 @@ export const MarketplaceHeader: React.FC<MarketplaceHeaderProps> = ({
           <div className="hidden md:flex items-center gap-3">
             <button
               onClick={onOpenWishlist}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#0682F4]/20 hover:border-[#08E6F9]/50 text-[#CCD2D9] hover:text-white text-xs transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#E8EDF2] hover:border-[#028BFA] text-[#14283F] text-xs transition-colors cursor-pointer bg-white"
             >
-              <Heart className={`w-3.5 h-3.5 ${wishlist.length > 0 ? 'text-[#08E6F9] fill-[#08E6F9]' : ''}`} />
+              <Heart className={`w-3.5 h-3.5 ${wishlist.length > 0 ? 'text-[#0169FA] fill-[#0169FA]' : 'text-[#6B7280]'}`} />
               <span>Wishlist</span>
               {wishlist.length > 0 && (
-                <span className="font-mono text-[#08E6F9] font-semibold">
+                <span className="font-mono text-[#0169FA] font-bold">
                   ({wishlist.length})
                 </span>
               )}
@@ -147,11 +146,11 @@ export const MarketplaceHeader: React.FC<MarketplaceHeaderProps> = ({
 
             <button
               onClick={onOpenCart}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-[#0682F4] to-[#08E6F9] text-[#01213D] font-semibold text-xs hover:opacity-95 transition-opacity cursor-pointer shadow-sm"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-[#08B3F8] via-[#0169FA] to-[#0148F2] text-white font-semibold text-xs hover:opacity-95 transition-opacity cursor-pointer shadow-xs shadow-[#0169FA]/20"
             >
-              <ShoppingBag className="w-3.5 h-3.5" />
+              <ShoppingBag className="w-3.5 h-3.5 text-white" />
               <span>Cart</span>
-              <span className="font-mono bg-[#01213D] text-[#08E6F9] px-1.5 py-0.2 rounded text-[10px]">
+              <span className="font-mono bg-white text-[#0169FA] px-1.5 py-0.2 rounded-md text-[10px] font-bold">
                 {cartCount}
               </span>
             </button>

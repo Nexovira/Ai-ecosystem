@@ -46,14 +46,14 @@ export const ProductFilters: React.FC<ProductFiltersProps> = ({ onCloseMobile, i
   return (
     <div className="space-y-6">
       {/* Filters Title & Reset */}
-      <div className="flex items-center justify-between pb-3 border-b border-[#0682F4]/20">
+      <div className="flex items-center justify-between pb-3 border-b border-[#E8EDF2]">
         <div className="flex items-center gap-2">
-          <SlidersHorizontal className="w-4 h-4 text-[#08E6F9]" />
-          <span className="font-display font-bold text-sm text-white uppercase tracking-wider">
+          <SlidersHorizontal className="w-4 h-4 text-[#0169FA]" />
+          <span className="font-display font-bold text-sm text-[#14283F] uppercase tracking-wider">
             Refine Catalog
           </span>
           {activeFiltersCount > 0 && (
-            <span className="w-5 h-5 rounded-full bg-[#0682F4] text-white text-[11px] font-mono font-bold flex items-center justify-center">
+            <span className="w-5 h-5 rounded-full bg-[#0169FA] text-white text-[11px] font-bold flex items-center justify-center">
               {activeFiltersCount}
             </span>
           )}
@@ -63,7 +63,7 @@ export const ProductFilters: React.FC<ProductFiltersProps> = ({ onCloseMobile, i
           {activeFiltersCount > 0 && (
             <button
               onClick={resetFilters}
-              className="inline-flex items-center gap-1 text-xs text-[#08E6F9] hover:underline cursor-pointer"
+              className="inline-flex items-center gap-1 text-xs text-[#0169FA] hover:underline cursor-pointer"
             >
               <RotateCcw className="w-3 h-3" />
               <span>Reset</span>
@@ -73,7 +73,7 @@ export const ProductFilters: React.FC<ProductFiltersProps> = ({ onCloseMobile, i
           {isMobile && onCloseMobile && (
             <button
               onClick={onCloseMobile}
-              className="p-1 rounded text-[#CCD2D9] hover:text-white"
+              className="p-1 rounded text-[#6B7280] hover:text-[#14283F]"
             >
               <X className="w-5 h-5" />
             </button>
@@ -83,20 +83,20 @@ export const ProductFilters: React.FC<ProductFiltersProps> = ({ onCloseMobile, i
 
       {/* Category Section */}
       <div className="space-y-3">
-        <span className="text-xs font-mono uppercase tracking-wider text-[#CCD2D9]/70 block">
+        <span className="text-xs font-semibold text-[#14283F] block">
           Ecosystem Categories
         </span>
         <div className="space-y-1">
           <button
             onClick={() => handleCategorySelect('')}
-            className={`w-full text-left text-xs py-2 px-3 rounded-lg transition-colors flex items-center justify-between cursor-pointer ${
+            className={`w-full text-left text-xs py-2 px-3 rounded-xl transition-colors flex items-center justify-between cursor-pointer ${
               filters.category === ''
-                ? 'bg-[#0682F4]/20 text-[#08E6F9] font-semibold border border-[#08E6F9]/40'
-                : 'text-[#CCD2D9] hover:bg-[#01213D] hover:text-white'
+                ? 'bg-[#0169FA]/10 text-[#0169FA] font-semibold border border-[#0169FA]/30'
+                : 'text-[#6B7280] hover:bg-[#F7F8FA] hover:text-[#14283F]'
             }`}
           >
             <span>All Categories</span>
-            {filters.category === '' && <Check className="w-3.5 h-3.5 text-[#08E6F9]" />}
+            {filters.category === '' && <Check className="w-3.5 h-3.5 text-[#0169FA]" />}
           </button>
 
           {categories.map((cat) => {
@@ -105,14 +105,14 @@ export const ProductFilters: React.FC<ProductFiltersProps> = ({ onCloseMobile, i
               <button
                 key={cat.categoryId}
                 onClick={() => handleCategorySelect(cat.name)}
-                className={`w-full text-left text-xs py-2 px-3 rounded-lg transition-colors flex items-center justify-between cursor-pointer ${
+                className={`w-full text-left text-xs py-2 px-3 rounded-xl transition-colors flex items-center justify-between cursor-pointer ${
                   isSelected
-                    ? 'bg-[#0682F4]/20 text-[#08E6F9] font-semibold border border-[#08E6F9]/40'
-                    : 'text-[#CCD2D9] hover:bg-[#01213D] hover:text-white'
+                    ? 'bg-[#0169FA]/10 text-[#0169FA] font-semibold border border-[#0169FA]/30'
+                    : 'text-[#6B7280] hover:bg-[#F7F8FA] hover:text-[#14283F]'
                 }`}
               >
                 <span>{cat.name}</span>
-                {isSelected && <Check className="w-3.5 h-3.5 text-[#08E6F9]" />}
+                {isSelected && <Check className="w-3.5 h-3.5 text-[#0169FA]" />}
               </button>
             );
           })}
@@ -120,8 +120,8 @@ export const ProductFilters: React.FC<ProductFiltersProps> = ({ onCloseMobile, i
       </div>
 
       {/* Brand Section */}
-      <div className="space-y-3 pt-3 border-t border-[#0682F4]/15">
-        <span className="text-xs font-mono uppercase tracking-wider text-[#CCD2D9]/70 block">
+      <div className="space-y-3 pt-3 border-t border-[#E8EDF2]">
+        <span className="text-xs font-semibold text-[#14283F] block">
           Verified Brands
         </span>
         <div className="space-y-1">
@@ -131,14 +131,14 @@ export const ProductFilters: React.FC<ProductFiltersProps> = ({ onCloseMobile, i
               <button
                 key={brand}
                 onClick={() => handleBrandSelect(brand)}
-                className={`w-full text-left text-xs py-2 px-3 rounded-lg transition-colors flex items-center justify-between cursor-pointer ${
+                className={`w-full text-left text-xs py-2 px-3 rounded-xl transition-colors flex items-center justify-between cursor-pointer ${
                   isSelected
-                    ? 'bg-[#0682F4]/20 text-[#08E6F9] font-semibold border border-[#08E6F9]/40'
-                    : 'text-[#CCD2D9] hover:bg-[#01213D] hover:text-white'
+                    ? 'bg-[#0169FA]/10 text-[#0169FA] font-semibold border border-[#0169FA]/30'
+                    : 'text-[#6B7280] hover:bg-[#F7F8FA] hover:text-[#14283F]'
                 }`}
               >
                 <span>{brand}</span>
-                {isSelected && <Check className="w-3.5 h-3.5 text-[#08E6F9]" />}
+                {isSelected && <Check className="w-3.5 h-3.5 text-[#0169FA]" />}
               </button>
             );
           })}
@@ -146,13 +146,13 @@ export const ProductFilters: React.FC<ProductFiltersProps> = ({ onCloseMobile, i
       </div>
 
       {/* Price Range Filter */}
-      <div className="space-y-3 pt-3 border-t border-[#0682F4]/15">
-        <span className="text-xs font-mono uppercase tracking-wider text-[#CCD2D9]/70 block">
-          Numerical Price Range (NGN)
+      <div className="space-y-3 pt-3 border-t border-[#E8EDF2]">
+        <span className="text-xs font-semibold text-[#14283F] block">
+          Price Range (NGN)
         </span>
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label className="text-[10px] font-mono text-[#CCD2D9]/60 block mb-1">Min (₦)</label>
+            <label className="text-[10px] text-[#6B7280] block mb-1">Min (₦)</label>
             <input
               type="number"
               value={filters.minPrice ?? ''}
@@ -164,11 +164,11 @@ export const ProductFilters: React.FC<ProductFiltersProps> = ({ onCloseMobile, i
                 }))
               }
               placeholder="0"
-              className="w-full bg-[#011629] text-white text-xs px-2.5 py-1.5 rounded-lg border border-[#0682F4]/30 focus:border-[#08E6F9] focus:outline-none"
+              className="w-full bg-[#F7F8FA] text-[#14283F] text-xs px-2.5 py-2 rounded-xl border border-[#E8EDF2] focus:border-[#0169FA] focus:bg-white focus:outline-none"
             />
           </div>
           <div>
-            <label className="text-[10px] font-mono text-[#CCD2D9]/60 block mb-1">Max (₦)</label>
+            <label className="text-[10px] text-[#6B7280] block mb-1">Max (₦)</label>
             <input
               type="number"
               value={filters.maxPrice ?? ''}
@@ -180,15 +180,15 @@ export const ProductFilters: React.FC<ProductFiltersProps> = ({ onCloseMobile, i
                 }))
               }
               placeholder="5,000,000"
-              className="w-full bg-[#011629] text-white text-xs px-2.5 py-1.5 rounded-lg border border-[#0682F4]/30 focus:border-[#08E6F9] focus:outline-none"
+              className="w-full bg-[#F7F8FA] text-[#14283F] text-xs px-2.5 py-2 rounded-xl border border-[#E8EDF2] focus:border-[#0169FA] focus:bg-white focus:outline-none"
             />
           </div>
         </div>
       </div>
 
       {/* Availability Filter */}
-      <div className="space-y-3 pt-3 border-t border-[#0682F4]/15">
-        <span className="text-xs font-mono uppercase tracking-wider text-[#CCD2D9]/70 block">
+      <div className="space-y-3 pt-3 border-t border-[#E8EDF2]">
+        <span className="text-xs font-semibold text-[#14283F] block">
           Availability Status
         </span>
         <div className="space-y-1">
@@ -201,14 +201,14 @@ export const ProductFilters: React.FC<ProductFiltersProps> = ({ onCloseMobile, i
               <button
                 key={item.value}
                 onClick={() => handleAvailabilitySelect(item.value)}
-                className={`w-full text-left text-xs py-2 px-3 rounded-lg transition-colors flex items-center justify-between cursor-pointer ${
+                className={`w-full text-left text-xs py-2 px-3 rounded-xl transition-colors flex items-center justify-between cursor-pointer ${
                   isSelected
-                    ? 'bg-[#0682F4]/20 text-[#08E6F9] font-semibold border border-[#08E6F9]/40'
-                    : 'text-[#CCD2D9] hover:bg-[#01213D] hover:text-white'
+                    ? 'bg-[#0169FA]/10 text-[#0169FA] font-semibold border border-[#0169FA]/30'
+                    : 'text-[#6B7280] hover:bg-[#F7F8FA] hover:text-[#14283F]'
                 }`}
               >
                 <span>{item.label}</span>
-                {isSelected && <Check className="w-3.5 h-3.5 text-[#08E6F9]" />}
+                {isSelected && <Check className="w-3.5 h-3.5 text-[#0169FA]" />}
               </button>
             );
           })}
@@ -220,7 +220,7 @@ export const ProductFilters: React.FC<ProductFiltersProps> = ({ onCloseMobile, i
           <button
             type="button"
             onClick={onCloseMobile}
-            className="w-full py-2.5 rounded-lg bg-gradient-to-r from-[#0682F4] to-[#08E6F9] text-[#01213D] font-bold text-xs"
+            className="w-full py-2.5 rounded-xl bg-gradient-to-r from-[#08B3F8] via-[#0169FA] to-[#0148F2] text-white font-bold text-xs shadow-sm"
           >
             Apply Filters
           </button>

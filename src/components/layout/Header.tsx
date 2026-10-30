@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Menu, X, ArrowUpRight, User, LogOut, Shield, Briefcase, Bell, Search, Wallet } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Menu, X, ArrowUpRight, User, LogOut, Shield, Briefcase, Bell, Search, Wallet, ChevronDown } from 'lucide-react';
 import { Logo } from '../common/Logo';
 import { Button } from '../common/Button';
 import { NotificationBell } from '../notifications/NotificationBell';
@@ -10,21 +10,40 @@ import { RoutePath } from '../../types';
 
 export const Header: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [moreDropdownOpen, setMoreDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const { currentPath, navigate } = useRouter();
   const { user, profile, signOutUser } = useAuth();
 
-  const navLinks: { label: string; path: RoutePath }[] = [
-    { label: 'AI Ecosystem', path: '/ai' },
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setMoreDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const primaryNavLinks: { label: string; path: RoutePath }[] = [
+    { label: 'Home', path: '/' },
     { label: 'Marketplace', path: '/marketplace' },
     { label: 'Tech & Services', path: '/services' },
     { label: 'Academy', path: '/academy' },
-    { label: 'Affiliates', path: '/affiliate' },
-    { label: 'Digital Products', path: '/digital-products' },
+    { label: 'About', path: '/about' },
+  ];
+
+  const moreLinks: { label: string; path: RoutePath; description: string }[] = [
+    { label: 'Affiliate Program', path: '/affiliate', description: 'Promote eligible offers and earn commissions' },
+    { label: 'Digital Products', path: '/digital-products', description: 'Guides, ebooks, and digital resources' },
+    { label: 'AI Ecosystem', path: '/ai', description: 'Integrated artificial intelligence services' },
   ];
 
   const handleNav = (path: RoutePath) => {
     navigate(path);
     setMobileMenuOpen(false);
+    setMoreDropdownOpen(false);
   };
 
   const handleSignOut = async () => {
@@ -37,112 +56,113 @@ export const Header: React.FC = () => {
   const isAdmin = profile?.role === 'ADMIN' || profile?.role === 'SUPER_ADMIN';
 
   return (
-    <header className="sticky top-0 z-40 w-full bg-[#01213D]/90 backdrop-blur-md border-b border-[#0682F4]/20 transition-colors">
+    <header className="sticky top-0 z-40 w-full bg-white/95 backdrop-blur-md border-b border-[#E8EDF2] transition-colors shadow-xs">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="flex h-18 items-center justify-between">
+        <div className="flex h-16 sm:h-18 items-center justify-between">
           
-          {/* Zone 1: Brand Zone */}
+          {/* Zone 1: Official Logo */}
           <div className="flex items-center">
             <Logo
               size="md"
+              variant="dark"
               onClick={() => handleNav('/')}
-              className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#08E6F9] rounded-md"
+              className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0169FA] rounded-md"
             />
           </div>
 
-          {/* Zone 2: Navigation Links (Desktop) */}
+          {/* Zone 2: Clean Navigation Links (Desktop) */}
           <nav
-            className="hidden lg:flex items-center gap-7 text-sm font-medium"
+            className="hidden lg:flex items-center gap-6 xl:gap-8 text-sm font-medium"
             aria-label="Main Navigation"
           >
-            {navLinks.map((link) => {
+            {primaryNavLinks.map((link) => {
               const isActive = currentPath === link.path;
               return (
                 <button
                   key={link.path}
                   onClick={() => handleNav(link.path)}
-                  className={`relative py-1 transition-colors hover:text-white cursor-pointer select-none ${
-                    isActive ? 'text-[#08E6F9] font-semibold' : 'text-[#CCD2D9]'
+                  className={`relative py-1.5 transition-colors cursor-pointer select-none ${
+                    isActive
+                      ? 'text-[#0169FA] font-semibold'
+                      : 'text-[#252B33] hover:text-[#0169FA]'
                   }`}
                 >
                   {link.label}
                   {isActive && (
-                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-[#0682F4] to-[#08E6F9] rounded-full" />
+                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-[#08B3F8] to-[#0169FA] rounded-full" />
                   )}
                 </button>
               );
             })}
+
+            {/* Dropdown for Secondary Opportunities */}
+            <div className="relative" ref={dropdownRef}>
+              <button
+                onClick={() => setMoreDropdownOpen(!moreDropdownOpen)}
+                className={`flex items-center gap-1 py-1.5 transition-colors cursor-pointer text-sm font-medium select-none ${
+                  moreDropdownOpen || moreLinks.some((l) => currentPath === l.path)
+                    ? 'text-[#0169FA] font-semibold'
+                    : 'text-[#252B33] hover:text-[#0169FA]'
+                }`}
+                aria-expanded={moreDropdownOpen}
+              >
+                <span>More</span>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${moreDropdownOpen ? 'rotate-180 text-[#0169FA]' : 'text-[#6B7280]'}`} />
+              </button>
+
+              {moreDropdownOpen && (
+                <div className="absolute top-full right-0 mt-2 w-64 rounded-2xl bg-white border border-[#E8EDF2] p-2 shadow-xl shadow-slate-200/60 animate-in fade-in zoom-in-95 duration-150 z-50">
+                  {moreLinks.map((item) => (
+                    <button
+                      key={item.path}
+                      onClick={() => handleNav(item.path)}
+                      className={`w-full text-left p-2.5 rounded-xl transition-colors cursor-pointer flex flex-col gap-0.5 ${
+                        currentPath === item.path
+                          ? 'bg-[#F7F8FA] text-[#0169FA]'
+                          : 'hover:bg-[#F7F8FA] text-[#111827]'
+                      }`}
+                    >
+                      <span className="text-xs font-semibold">{item.label}</span>
+                      <span className="text-[11px] text-[#6B7280] leading-tight">{item.description}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </nav>
 
           {/* Desktop Global Search Bar */}
-          <div className="hidden lg:flex items-center">
-            <GlobalSearchBar variant="header" className="w-44 xl:w-64" />
+          <div className="hidden xl:flex items-center">
+            <GlobalSearchBar variant="header" className="w-52" />
           </div>
 
           {/* Zone 3: Primary Actions (Desktop) */}
           <div className="hidden lg:flex items-center gap-3">
             {user ? (
               // Authenticated User Controls
-              <div className="flex items-center gap-3">
-
+              <div className="flex items-center gap-2.5">
                 {/* Expert Console for approved experts */}
                 {profile?.role === 'EXPERT' && (
                   <button
                     onClick={() => handleNav('/expert/dashboard')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all cursor-pointer ${
-                      currentPath.startsWith('/expert')
-                        ? 'bg-[#08E6F9]/20 border-[#08E6F9] text-[#08E6F9]'
-                        : 'bg-[#011B33] border-[#0682F4]/40 text-[#CCD2D9] hover:border-[#08E6F9] hover:text-white'
-                    }`}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#E8EDF2] bg-white text-xs font-medium text-[#14283F] hover:border-[#0169FA] hover:text-[#0169FA] transition-all cursor-pointer shadow-xs"
                     title="Access Expert Console"
                   >
-                    <Briefcase className="w-3.5 h-3.5 text-[#08E6F9]" />
+                    <Briefcase className="w-3.5 h-3.5 text-[#0169FA]" />
                     <span>Expert Console</span>
                   </button>
                 )}
 
                 {/* Operations Desk for management */}
                 {isAdmin && (
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={() => handleNav('/management/services')}
-                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all cursor-pointer ${
-                        currentPath.startsWith('/management/services')
-                          ? 'bg-[#0682F4]/20 border-[#08E6F9] text-[#08E6F9]'
-                          : 'bg-[#011B33] border-[#0682F4]/40 text-[#CCD2D9] hover:border-[#08E6F9] hover:text-white'
-                      }`}
-                      title="Services Desk"
-                    >
-                      <Shield className="w-3.5 h-3.5 text-[#08E6F9]" />
-                      <span>Services Ops</span>
-                    </button>
-
-                    <button
-                      onClick={() => handleNav('/management/academy')}
-                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all cursor-pointer ${
-                        currentPath.startsWith('/management/academy')
-                          ? 'bg-[#0682F4]/20 border-[#08E6F9] text-[#08E6F9]'
-                          : 'bg-[#011B33] border-[#0682F4]/40 text-[#CCD2D9] hover:border-[#08E6F9] hover:text-white'
-                      }`}
-                      title="Academy Management Portal"
-                    >
-                      <Shield className="w-3.5 h-3.5 text-[#08E6F9]" />
-                      <span>Academy Ops</span>
-                    </button>
-
-                    <button
-                      onClick={() => handleNav('/management/affiliate')}
-                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all cursor-pointer ${
-                        currentPath.startsWith('/management/affiliate')
-                          ? 'bg-[#0682F4]/20 border-[#08E6F9] text-[#08E6F9]'
-                          : 'bg-[#011B33] border-[#0682F4]/40 text-[#CCD2D9] hover:border-[#08E6F9] hover:text-white'
-                      }`}
-                      title="Affiliate Management Desk"
-                    >
-                      <Shield className="w-3.5 h-3.5 text-[#08E6F9]" />
-                      <span>Affiliate Ops</span>
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => handleNav('/management/hub' as RoutePath)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#E8EDF2] bg-white text-xs font-medium text-[#14283F] hover:border-[#0169FA] hover:text-[#0169FA] transition-all cursor-pointer shadow-xs"
+                    title="Management Hub"
+                  >
+                    <Shield className="w-3.5 h-3.5 text-[#0169FA]" />
+                    <span>Admin Hub</span>
+                  </button>
                 )}
 
                 {/* Notifications Bell */}
@@ -151,33 +171,26 @@ export const Header: React.FC = () => {
                 {/* Financial Wallet */}
                 <button
                   onClick={() => handleNav('/wallet' as RoutePath)}
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all cursor-pointer ${
-                    currentPath.startsWith('/wallet')
-                      ? 'bg-[#0682F4]/20 border-[#08E6F9] text-[#08E6F9]'
-                      : 'bg-[#011B33] border-[#0682F4]/30 text-[#CCD2D9] hover:border-[#08E6F9]/60 hover:text-white'
-                  }`}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#E8EDF2] bg-white text-xs font-medium text-[#14283F] hover:border-[#0169FA] hover:text-[#0169FA] transition-all cursor-pointer shadow-xs"
                   title="Financial Wallet"
                 >
-                  <Wallet className="w-3.5 h-3.5 text-[#08E6F9]" />
-                  <span className="hidden sm:inline">Wallet</span>
+                  <Wallet className="w-3.5 h-3.5 text-[#0169FA]" />
+                  <span>Wallet</span>
                 </button>
 
+                {/* Account Profile Pill */}
                 <button
                   onClick={() => handleNav('/account')}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all cursor-pointer ${
-                    currentPath === '/account'
-                      ? 'bg-[#0682F4]/20 border-[#08E6F9] text-white'
-                      : 'bg-[#011B33] border-[#0682F4]/30 text-[#CCD2D9] hover:border-[#08E6F9]/60 hover:text-white'
-                  }`}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-[#E8EDF2] bg-white hover:border-[#0169FA] transition-all cursor-pointer shadow-xs"
                 >
-                  <div className="w-6 h-6 rounded-full bg-[#0682F4] flex items-center justify-center text-xs font-bold text-white shrink-0">
-                    <User className="w-3.5 h-3.5" />
+                  <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-[#0169FA] to-[#08B3F8] flex items-center justify-center text-xs font-bold text-white shrink-0">
+                    <User className="w-3.5 h-3.5 text-white" />
                   </div>
-                  <span className="text-xs font-medium max-w-[120px] truncate">
+                  <span className="text-xs font-semibold text-[#14283F] max-w-[110px] truncate">
                     {displayName}
                   </span>
                   {isAdmin && (
-                    <Shield className="w-3 h-3 text-[#08E6F9] shrink-0" aria-label="Administrator" />
+                    <span className="text-[10px] font-bold text-[#0169FA] bg-[#0169FA]/10 px-1.5 py-0.5 rounded-md">Admin</span>
                   )}
                 </button>
 
@@ -193,10 +206,10 @@ export const Header: React.FC = () => {
               </div>
             ) : (
               // Unauthenticated User Controls
-              <>
+              <div className="flex items-center gap-3">
                 <button
                   onClick={() => handleNav('/signin')}
-                  className="text-sm font-medium text-[#CCD2D9] hover:text-white px-3 py-2 rounded-lg transition-colors cursor-pointer"
+                  className="text-sm font-semibold text-[#14283F] hover:text-[#0169FA] px-3 py-2 rounded-xl transition-colors cursor-pointer"
                 >
                   Sign In
                 </button>
@@ -204,14 +217,15 @@ export const Header: React.FC = () => {
                   variant="primary"
                   size="sm"
                   onClick={() => handleNav('/register')}
+                  className="shadow-sm shadow-[#0169FA]/20"
                 >
                   Get Started
                 </Button>
-              </>
+              </div>
             )}
           </div>
 
-          {/* Mobile Menu Trigger & Quick Action */}
+          {/* Mobile Menu Trigger & Quick Actions */}
           <div className="flex lg:hidden items-center gap-2">
             {!user ? (
               <Button
@@ -227,7 +241,7 @@ export const Header: React.FC = () => {
                 <NotificationBell />
                 <button
                   onClick={() => handleNav('/account')}
-                  className="p-1.5 rounded-lg bg-[#011B33] border border-[#0682F4]/30 text-[#08E6F9]"
+                  className="p-1.5 rounded-xl bg-white border border-[#E8EDF2] text-[#0169FA]"
                   aria-label="Account"
                 >
                   <User className="w-4 h-4" />
@@ -238,7 +252,7 @@ export const Header: React.FC = () => {
             {/* Mobile Search Button */}
             <button
               onClick={() => handleNav('/search')}
-              className="p-1.5 rounded-lg bg-[#011B33] border border-[#0682F4]/30 text-[#08E6F9] hover:bg-[#0682F4]/20 transition"
+              className="p-1.5 rounded-xl bg-white border border-[#E8EDF2] text-[#0169FA] hover:bg-[#F7F8FA] transition"
               aria-label="Search Ecosystem"
             >
               <Search className="w-4 h-4" />
@@ -247,12 +261,12 @@ export const Header: React.FC = () => {
             <button
               type="button"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="p-2 text-[#CCD2D9] hover:text-white rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#08E6F9] transition-colors"
+              className="p-2 text-[#14283F] hover:text-[#0169FA] rounded-xl hover:bg-[#F7F8FA] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0169FA] transition-colors cursor-pointer"
               aria-expanded={mobileMenuOpen}
               aria-label="Toggle navigation menu"
             >
               {mobileMenuOpen ? (
-                <X className="w-6 h-6 text-[#08E6F9]" />
+                <X className="w-6 h-6 text-[#0169FA]" />
               ) : (
                 <Menu className="w-6 h-6" />
               )}
@@ -263,53 +277,59 @@ export const Header: React.FC = () => {
 
       {/* Mobile Menu Drawer */}
       {mobileMenuOpen && (
-        <div className="lg:hidden border-b border-[#0682F4]/20 bg-[#011B33] px-5 py-6 shadow-2xl animate-in slide-in-from-top-2 duration-200 space-y-4">
+        <div className="lg:hidden border-b border-[#E8EDF2] bg-white px-5 py-6 shadow-xl animate-in slide-in-from-top-2 duration-200 space-y-4">
           {/* Global Search in Mobile Drawer */}
           <div>
             <GlobalSearchBar
               variant="standalone"
               onSearchSubmit={() => setMobileMenuOpen(false)}
-              placeholder="Search Nexovira..."
+              placeholder="Search Nexovira products, services, courses..."
             />
           </div>
 
-          <nav className="flex flex-col gap-3" aria-label="Mobile Navigation">
-            {navLinks.map((link) => {
+          <nav className="flex flex-col gap-1.5" aria-label="Mobile Navigation">
+            {primaryNavLinks.map((link) => {
               const isActive = currentPath === link.path;
               return (
                 <button
                   key={link.path}
                   onClick={() => handleNav(link.path)}
-                  className={`flex items-center justify-between py-2.5 px-3 rounded-lg text-left text-sm font-medium transition-colors ${
+                  className={`flex items-center justify-between py-2.5 px-3 rounded-xl text-left text-sm font-semibold transition-colors ${
                     isActive
-                      ? 'bg-[#0682F4]/20 text-[#08E6F9]'
-                      : 'text-[#CCD2D9] hover:bg-[#0682F4]/10 hover:text-white'
+                      ? 'bg-[#0169FA]/10 text-[#0169FA]'
+                      : 'text-[#14283F] hover:bg-[#F7F8FA] hover:text-[#0169FA]'
                   }`}
                 >
                   <span>{link.label}</span>
-                  <ArrowUpRight className="w-4 h-4 opacity-50" />
+                  <ArrowUpRight className="w-4 h-4 opacity-40" />
                 </button>
               );
             })}
 
-            <div className="pt-4 mt-2 border-t border-[#0682F4]/20 flex flex-col gap-2.5">
+            {/* Additional Sections in Mobile */}
+            <div className="pt-2 border-t border-[#E8EDF2] space-y-1">
+              <span className="px-3 text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
+                Ecosystem Hubs
+              </span>
+              {moreLinks.map((item) => (
+                <button
+                  key={item.path}
+                  onClick={() => handleNav(item.path)}
+                  className={`w-full flex items-center justify-between py-2 px-3 rounded-xl text-left text-xs font-medium transition-colors ${
+                    currentPath === item.path
+                      ? 'bg-[#0169FA]/10 text-[#0169FA]'
+                      : 'text-[#252B33] hover:bg-[#F7F8FA] hover:text-[#0169FA]'
+                  }`}
+                >
+                  <span>{item.label}</span>
+                  <ArrowUpRight className="w-3.5 h-3.5 opacity-40" />
+                </button>
+              ))}
+            </div>
+
+            <div className="pt-4 mt-2 border-t border-[#E8EDF2] flex flex-col gap-2.5">
               {user ? (
                 <>
-
-                  <Button
-                    variant="secondary"
-                    size="md"
-                    fullWidth
-                    onClick={() => handleNav('/notifications')}
-                    className="justify-between"
-                  >
-                    <span className="flex items-center gap-2">
-                      <Bell className="w-4 h-4 text-[#08E6F9]" />
-                      <span>Notifications</span>
-                    </span>
-                    <ArrowUpRight className="w-4 h-4 text-[#CCD2D9]" />
-                  </Button>
-
                   <Button
                     variant="secondary"
                     size="md"
@@ -318,10 +338,10 @@ export const Header: React.FC = () => {
                     className="justify-between"
                   >
                     <span className="flex items-center gap-2">
-                      <User className="w-4 h-4 text-[#08E6F9]" />
+                      <User className="w-4 h-4 text-[#0169FA]" />
                       <span>Account ({displayName})</span>
                     </span>
-                    {isAdmin && <Shield className="w-4 h-4 text-[#08E6F9]" />}
+                    {isAdmin && <Shield className="w-4 h-4 text-[#0169FA]" />}
                   </Button>
                   <Button
                     variant="outline"
@@ -349,7 +369,7 @@ export const Header: React.FC = () => {
                     fullWidth
                     onClick={() => handleNav('/register')}
                   >
-                    Create Account
+                    Get Started
                   </Button>
                 </>
               )}

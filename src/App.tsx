@@ -427,7 +427,7 @@ const MainRouterView: React.FC = () => {
 
 const AppShell: React.FC = () => {
   return (
-    <div className="min-h-screen flex flex-col bg-[#01213D] text-white selection:bg-[#0682F4] selection:text-white">
+    <div className="min-h-screen flex flex-col bg-[#F7F8FA] text-[#111827] selection:bg-[#0169FA] selection:text-white">
       {/* Global Navigation Header */}
       <Header />
 
