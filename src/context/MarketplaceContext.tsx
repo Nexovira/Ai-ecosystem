@@ -72,8 +72,8 @@ const MarketplaceContext = createContext<MarketplaceContextType | undefined>(und
 export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, profile } = useAuth();
   
-  const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
-  const [categories, setCategories] = useState<Category[]>(INITIAL_CATEGORIES);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loadingProducts, setLoadingProducts] = useState<boolean>(true);
   const [filters, setFilters] = useState<MarketplaceFilterState>(DEFAULT_FILTERS);
 
@@ -105,36 +105,56 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const refreshCatalog = useCallback(async () => {
     setLoadingProducts(true);
     try {
+      // 1. Fetch persistent anti-resurrection tombstones
+      const tombstoneIds = new Set<string>();
+      try {
+        const tombSnap = await getDocs(collection(db, 'tombstones')).catch(() => null);
+        if (tombSnap && !tombSnap.empty) {
+          tombSnap.forEach((d) => {
+            const data = d.data();
+            if (data.resourceId) tombstoneIds.add(data.resourceId);
+            tombstoneIds.add(d.id.replace(/^product_/, ''));
+          });
+        }
+        const delSnap = await getDocs(collection(db, 'deletedProducts')).catch(() => null);
+        if (delSnap && !delSnap.empty) {
+          delSnap.forEach((d) => tombstoneIds.add(d.id));
+        }
+      } catch {
+        // Continue safely
+      }
+
+      // 2. Fetch published products from Firestore authoritative source
       const productsCol = collection(db, 'products');
       const prodSnap = await getDocs(query(productsCol, where('productStatus', '==', 'PUBLISHED')));
 
+      const loadedProducts: Product[] = [];
       if (!prodSnap.empty) {
-        const loadedProducts: Product[] = [];
         prodSnap.forEach((d) => {
-          loadedProducts.push(d.data() as Product);
+          const prod = d.data() as Product;
+          if (!tombstoneIds.has(prod.productId)) {
+            loadedProducts.push(prod);
+          }
         });
-        setProducts(loadedProducts);
-      } else {
-        setProducts(INITIAL_PRODUCTS);
       }
+      setProducts(loadedProducts);
 
-      // Categories
+      // 3. Categories from Firestore authoritative source
       const catCol = collection(db, 'categories');
       const catSnap = await getDocs(catCol);
+      const loadedCats: Category[] = [];
       if (!catSnap.empty) {
-        const loadedCats: Category[] = [];
         catSnap.forEach((d) => {
-          loadedCats.push(d.data() as Category);
+          const cat = d.data() as Category;
+          if (!tombstoneIds.has(cat.categoryId) && !tombstoneIds.has(`product_category_${cat.categoryId}`)) {
+            loadedCats.push(cat);
+          }
         });
-        loadedCats.sort((a, b) => a.order - b.order);
-        setCategories(loadedCats);
-      } else {
-        setCategories(INITIAL_CATEGORIES);
+        loadedCats.sort((a, b) => (a.order || 0) - (b.order || 0));
       }
+      setCategories(loadedCats);
     } catch (err) {
-      console.warn('Marketplace using verified local catalog fallback:', err);
-      setProducts(INITIAL_PRODUCTS);
-      setCategories(INITIAL_CATEGORIES);
+      console.warn('Marketplace catalog fetch notice:', err);
     } finally {
       setLoadingProducts(false);
     }

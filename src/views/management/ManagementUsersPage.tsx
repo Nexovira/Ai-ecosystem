@@ -21,19 +21,36 @@ import {
   Share2,
   X,
   Save,
+  TrendingUp,
+  MailCheck,
 } from 'lucide-react';
 import { ManagementUserItem } from '../../types/management';
 import { AccountStatus, UserRole } from '../../types/auth';
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 
 export const ManagementUsersPage: React.FC = () => {
   const { user, profile } = useAuth();
   const [users, setUsers] = useState<ManagementUserItem[]>([]);
   const [total, setTotal] = useState(0);
+  const [stats, setStats] = useState({
+    total: 0,
+    verified: 0,
+    pendingVerification: 0,
+    active: 0,
+    restricted: 0,
+    suspended: 0,
+    underReview: 0,
+    newToday: 0,
+    newThisWeek: 0,
+    newThisMonth: 0,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [roleFilter, setRoleFilter] = useState('ALL');
+  const [verificationFilter, setVerificationFilter] = useState<'ALL' | 'VERIFIED' | 'PENDING'>('ALL');
 
   // Status Modal State
   const [selectedUserForStatus, setSelectedUserForStatus] = useState<ManagementUserItem | null>(null);
@@ -54,26 +71,145 @@ export const ManagementUsersPage: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
+      const isDefaultAdmin =
+        user.email?.toLowerCase() === 'nexoviratech@gmail.com' ||
+        user.email?.toLowerCase() === 'nexovirasupport@gmail.com';
+      const effectiveRole = profile.role || (isDefaultAdmin ? 'SUPER_ADMIN' : '');
+
+      let loadedViaApi = false;
       const queryParams = new URLSearchParams();
       if (search.trim()) queryParams.set('search', search.trim());
       if (statusFilter !== 'ALL') queryParams.set('status', statusFilter);
       if (roleFilter !== 'ALL') queryParams.set('role', roleFilter);
 
-      const res = await fetch(`/api/management/users?${queryParams.toString()}`, {
-        headers: {
-          'x-user-id': user.uid,
-          'x-user-role': profile.role || '',
-          'x-user-email': user.email || '',
-        },
-      });
+      try {
+        const res = await fetch(`/api/management/users?${queryParams.toString()}`, {
+          headers: {
+            'x-user-id': user.uid,
+            'x-user-role': effectiveRole,
+            'x-user-email': user.email || '',
+          },
+        });
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to fetch users');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success) {
+            let resultUsers = data.users || [];
+            if (verificationFilter === 'VERIFIED') {
+              resultUsers = resultUsers.filter((u: ManagementUserItem) => u.emailVerified);
+            } else if (verificationFilter === 'PENDING') {
+              resultUsers = resultUsers.filter((u: ManagementUserItem) => !u.emailVerified);
+            }
+            setUsers(resultUsers);
+            setTotal(resultUsers.length);
+            if (data.stats) {
+              setStats(data.stats);
+            }
+            loadedViaApi = true;
+          }
+        }
+      } catch (apiErr) {
+        console.warn('API users endpoint unavailable, falling back to direct Firestore:', apiErr);
       }
 
-      setUsers(data.users || []);
-      setTotal(data.total || 0);
+      // Direct authoritative Firestore fallback if API route unreachable (e.g. static preview/Vercel)
+      if (!loadedViaApi) {
+        const uSnap = await getDocs(collection(db, 'users'));
+        const now = Date.now();
+        const todayStart = new Date();
+        todayStart.setUTCHours(0, 0, 0, 0);
+        const weekStart = now - 7 * 24 * 60 * 60 * 1000;
+        const monthStart = now - 30 * 24 * 60 * 60 * 1000;
+
+        let totalCount = 0;
+        let verifiedCount = 0;
+        let pendingCount = 0;
+        let activeCount = 0;
+        let restrictedCount = 0;
+        let suspendedCount = 0;
+        let underReviewCount = 0;
+        let newTodayCount = 0;
+        let newThisWeekCount = 0;
+        let newThisMonthCount = 0;
+
+        let rawList: ManagementUserItem[] = [];
+
+        uSnap.forEach((docSnap) => {
+          const d = docSnap.data();
+          const userId = docSnap.id;
+          const emailVerified = Boolean(d.emailVerified);
+          const accountStatus = (d.accountStatus as AccountStatus) || 'ACTIVE';
+          const role = (d.role as UserRole) || 'CUSTOMER';
+
+          totalCount++;
+          if (emailVerified) verifiedCount++;
+          else pendingCount++;
+
+          if (accountStatus === 'ACTIVE') activeCount++;
+          else if (accountStatus === 'RESTRICTED') restrictedCount++;
+          else if (accountStatus === 'SUSPENDED') suspendedCount++;
+          else if (accountStatus === 'UNDER_REVIEW') underReviewCount++;
+
+          const createdMs = d.createdAt ? new Date(d.createdAt).getTime() : 0;
+          if (createdMs >= todayStart.getTime()) newTodayCount++;
+          if (createdMs >= weekStart) newThisWeekCount++;
+          if (createdMs >= monthStart) newThisMonthCount++;
+
+          rawList.push({
+            userId,
+            fullName: d.fullName || 'Member',
+            email: d.email || '',
+            phoneNumber: d.phoneNumber,
+            role,
+            accountStatus,
+            emailVerified,
+            capabilities: [role],
+            ordersCount: 0,
+            servicesCount: 0,
+            academyCount: 0,
+            isAffiliate: false,
+            createdAt: d.createdAt || new Date().toISOString(),
+            updatedAt: d.updatedAt || new Date().toISOString(),
+          });
+        });
+
+        setStats({
+          total: totalCount,
+          verified: verifiedCount,
+          pendingVerification: pendingCount,
+          active: activeCount,
+          restricted: restrictedCount,
+          suspended: suspendedCount,
+          underReview: underReviewCount,
+          newToday: newTodayCount,
+          newThisWeek: newThisWeekCount,
+          newThisMonth: newThisMonthCount,
+        });
+
+        if (search.trim()) {
+          const q = search.toLowerCase();
+          rawList = rawList.filter(
+            (u) =>
+              u.fullName.toLowerCase().includes(q) ||
+              u.email.toLowerCase().includes(q) ||
+              u.userId.toLowerCase().includes(q)
+          );
+        }
+        if (statusFilter !== 'ALL') {
+          rawList = rawList.filter((u) => u.accountStatus === statusFilter);
+        }
+        if (roleFilter !== 'ALL') {
+          rawList = rawList.filter((u) => u.role === roleFilter);
+        }
+        if (verificationFilter === 'VERIFIED') {
+          rawList = rawList.filter((u) => u.emailVerified);
+        } else if (verificationFilter === 'PENDING') {
+          rawList = rawList.filter((u) => !u.emailVerified);
+        }
+
+        setUsers(rawList);
+        setTotal(rawList.length);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error loading users';
       setError(msg);
@@ -84,7 +220,7 @@ export const ManagementUsersPage: React.FC = () => {
 
   useEffect(() => {
     fetchUsers();
-  }, [user, profile, statusFilter, roleFilter]);
+  }, [user, profile, statusFilter, roleFilter, verificationFilter]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -249,9 +385,103 @@ export const ManagementUsersPage: React.FC = () => {
         </div>
       )}
 
+      {/* Registration Analytics & KPI Overview */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Total Registered Users */}
+        <div className="p-5 rounded-2xl bg-[#011B33] border border-[#0682F4]/30 shadow-xl space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-mono font-semibold uppercase tracking-wider text-[#CCD2D9]/70">
+              Total Registered
+            </span>
+            <div className="p-2 rounded-xl bg-[#0682F4]/10 text-[#08E6F9]">
+              <Users className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <div className="text-3xl font-black text-white">{stats.total}</div>
+            <div className="text-[11px] text-[#CCD2D9]/70 mt-1 flex items-center gap-2">
+              <span className="text-emerald-400 font-semibold">+{stats.newThisWeek} this week</span>
+              <span>·</span>
+              <span className="text-[#08E6F9] font-semibold">+{stats.newToday} today</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Email Verification Status */}
+        <div className="p-5 rounded-2xl bg-[#011B33] border border-[#0682F4]/30 shadow-xl space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-mono font-semibold uppercase tracking-wider text-[#CCD2D9]/70">
+              Email Verification
+            </span>
+            <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
+              <CheckCircle2 className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl font-black text-emerald-400">{stats.verified}</span>
+              <span className="text-xs font-semibold text-[#CCD2D9]/60">Verified</span>
+            </div>
+            <div className="text-[11px] text-[#CCD2D9]/70 mt-1 flex items-center gap-2">
+              <span className="text-amber-400 font-semibold">{stats.pendingVerification} pending confirmation</span>
+              <span>·</span>
+              <span className="text-white font-mono">
+                {stats.total > 0 ? Math.round((stats.verified / stats.total) * 100) : 0}% rate
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Active Accounts & Standing */}
+        <div className="p-5 rounded-2xl bg-[#011B33] border border-[#0682F4]/30 shadow-xl space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-mono font-semibold uppercase tracking-wider text-[#CCD2D9]/70">
+              Account Standing
+            </span>
+            <div className="p-2 rounded-xl bg-[#0682F4]/10 text-[#08E6F9]">
+              <ShieldCheck className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <div className="text-3xl font-black text-white">{stats.active}</div>
+            <div className="text-[11px] text-[#CCD2D9]/70 mt-1 flex items-center gap-2">
+              <span className="text-emerald-400 font-semibold">{stats.active} Active</span>
+              <span>·</span>
+              <span className="text-amber-400 font-semibold">{stats.restricted} Restricted</span>
+              {stats.suspended > 0 && (
+                <>
+                  <span>·</span>
+                  <span className="text-red-400 font-semibold">{stats.suspended} Suspended</span>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* New Registrations Window */}
+        <div className="p-5 rounded-2xl bg-[#011B33] border border-[#0682F4]/30 shadow-xl space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-mono font-semibold uppercase tracking-wider text-[#CCD2D9]/70">
+              New Registrations
+            </span>
+            <div className="p-2 rounded-xl bg-[#0682F4]/10 text-[#08E6F9]">
+              <TrendingUp className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <div className="text-3xl font-black text-[#08E6F9]">+{stats.newThisMonth}</div>
+            <div className="text-[11px] text-[#CCD2D9]/70 mt-1 flex items-center gap-2">
+              <span className="text-white font-medium">Last 30 days</span>
+              <span>·</span>
+              <span className="text-emerald-400 font-semibold">+{stats.newThisWeek} this wk</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Filter and Search Bar */}
       <div className="p-4 rounded-2xl bg-[#011B33] border border-[#0682F4]/30 shadow-xl flex flex-col md:flex-row items-center justify-between gap-4">
-        <form onSubmit={handleSearchSubmit} className="w-full md:w-96 relative">
+        <form onSubmit={handleSearchSubmit} className="w-full md:w-80 relative">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#CCD2D9]/60" />
           <input
             type="text"
@@ -263,6 +493,19 @@ export const ManagementUsersPage: React.FC = () => {
         </form>
 
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-semibold text-[#CCD2D9]/70">Email:</span>
+            <select
+              value={verificationFilter}
+              onChange={(e) => setVerificationFilter(e.target.value as any)}
+              className="px-3 py-1.5 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white text-xs focus:outline-none focus:border-[#08E6F9]"
+            >
+              <option value="ALL">All Email Status</option>
+              <option value="VERIFIED">Verified Only</option>
+              <option value="PENDING">Pending Email Verification</option>
+            </select>
+          </div>
+
           <div className="flex items-center gap-2">
             <span className="text-[11px] font-semibold text-[#CCD2D9]/70">Status:</span>
             <select
@@ -317,7 +560,7 @@ export const ManagementUsersPage: React.FC = () => {
                 <tr>
                   <th className="px-4 py-3">User &amp; Contact</th>
                   <th className="px-4 py-3">Role</th>
-                  <th className="px-4 py-3">Standing</th>
+                  <th className="px-4 py-3">Verification &amp; Standing</th>
                   <th className="px-4 py-3">Ecosystem Activity</th>
                   <th className="px-4 py-3">Capabilities</th>
                   <th className="px-4 py-3 text-right">Actions</th>
@@ -336,7 +579,20 @@ export const ManagementUsersPage: React.FC = () => {
                         {u.role}
                       </span>
                     </td>
-                    <td className="px-4 py-3.5">{getStatusBadge(u.accountStatus)}</td>
+                    <td className="px-4 py-3.5">
+                      <div className="flex flex-col gap-1 items-start">
+                        {u.emailVerified ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3" /> VERIFIED
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center gap-1">
+                            <Clock className="w-3 h-3" /> PENDING EMAIL
+                          </span>
+                        )}
+                        {getStatusBadge(u.accountStatus)}
+                      </div>
+                    </td>
                     <td className="px-4 py-3.5">
                       <div className="flex items-center gap-3 text-[11px] text-[#CCD2D9]/80 font-mono">
                         <span title="Marketplace Orders" className="flex items-center gap-1">

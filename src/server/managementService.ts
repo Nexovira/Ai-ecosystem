@@ -118,12 +118,30 @@ export class ManagementService {
    * Aggregates real operational dashboard metrics from authoritative single sources of truth.
    */
   async getDashboardMetrics(): Promise<ManagementDashboardMetrics> {
-    // 1. Users
+    // 1. Users & Registration Metrics
     const users = await this.getAllUsers();
     const activeUsers = users.filter((u) => u.accountStatus === 'ACTIVE').length;
     const restrictedUsers = users.filter((u) => u.accountStatus === 'RESTRICTED').length;
     const suspendedUsers = users.filter((u) => u.accountStatus === 'SUSPENDED').length;
     const underReviewUsers = users.filter((u) => u.accountStatus === 'UNDER_REVIEW').length;
+    const verifiedUsers = users.filter((u) => Boolean(u.emailVerified)).length;
+    const pendingVerificationUsers = users.filter((u) => !u.emailVerified).length;
+
+    const now = new Date();
+    const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).getTime();
+    const sevenDaysAgo = now.getTime() - 7 * 24 * 60 * 60 * 1000;
+    const thirtyDaysAgo = now.getTime() - 30 * 24 * 60 * 60 * 1000;
+
+    let newToday = 0;
+    let newThisWeek = 0;
+    let newThisMonth = 0;
+
+    users.forEach((u) => {
+      const createdTime = u.createdAt ? new Date(u.createdAt).getTime() : 0;
+      if (createdTime >= startOfToday) newToday++;
+      if (createdTime >= sevenDaysAgo) newThisWeek++;
+      if (createdTime >= thirtyDaysAgo) newThisMonth++;
+    });
 
     // 2. Marketplace & Products
     const products = await commerceService.getAllProductsForManagement();
@@ -183,10 +201,15 @@ export class ManagementService {
     return {
       users: {
         total: users.length,
+        verified: verifiedUsers,
+        pendingVerification: pendingVerificationUsers,
         active: activeUsers,
         restricted: restrictedUsers,
         suspended: suspendedUsers,
         underReview: underReviewUsers,
+        newToday,
+        newThisWeek,
+        newThisMonth,
       },
       marketplace: {
         totalProducts: products.length,
@@ -242,25 +265,44 @@ export class ManagementService {
   }
 
   /**
-   * Helper to retrieve all user profiles from Firestore.
+   * Helper to retrieve all user profiles from Firestore single source of truth.
+   * Guarantees unique user identities with Firebase UID as the authoritative key.
    */
   async getAllUsers(): Promise<UserProfile[]> {
-    const list: UserProfile[] = [...this.usersCache];
+    const list: UserProfile[] = [];
+    const seenUids = new Set<string>();
+
     try {
       const snap = await getDocs(collection(db, 'users')).catch(() => null);
       if (snap && snap.docs) {
         snap.forEach((d) => {
           const u = d.data() as UserProfile;
-          const idx = list.findIndex((existing) => existing.userId === u.userId);
-          if (idx >= 0) {
-            list[idx] = u;
-          } else {
-            list.push(u);
+          const uid = u.userId || d.id;
+          if (!seenUids.has(uid)) {
+            seenUids.add(uid);
+            list.push({
+              ...u,
+              userId: uid,
+              emailVerified: Boolean(u.emailVerified),
+              accountStatus: u.accountStatus || 'ACTIVE',
+            });
           }
         });
       }
-    } catch {
-      // Safe fallback to local users cache
+    } catch (err) {
+      console.warn('Firestore getAllUsers fetch note:', err);
+    }
+
+    // Include cached profiles if any are missing from Firestore query
+    for (const cached of this.usersCache) {
+      if (!seenUids.has(cached.userId)) {
+        seenUids.add(cached.userId);
+        list.push({
+          ...cached,
+          emailVerified: Boolean(cached.emailVerified),
+          accountStatus: cached.accountStatus || 'ACTIVE',
+        });
+      }
     }
 
     return list;
@@ -275,7 +317,22 @@ export class ManagementService {
     role?: string;
     limit?: number;
     offset?: number;
-  }): Promise<{ users: ManagementUserItem[]; total: number }> {
+  }): Promise<{
+    users: ManagementUserItem[];
+    total: number;
+    stats: {
+      total: number;
+      verified: number;
+      pendingVerification: number;
+      active: number;
+      restricted: number;
+      suspended: number;
+      underReview: number;
+      newToday: number;
+      newThisWeek: number;
+      newThisMonth: number;
+    };
+  }> {
     const rawUsers = await this.getAllUsers();
     const orders = await commerceService.getAllOrdersForManagement();
     const serviceRequests = await servicesService.getAllRequestsForManagement();
@@ -337,12 +394,31 @@ export class ManagementService {
       enriched = enriched.filter((u) => u.role === options.role);
     }
 
+    const now = Date.now();
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
+    const weekStart = now - 7 * 24 * 60 * 60 * 1000;
+    const monthStart = now - 30 * 24 * 60 * 60 * 1000;
+
+    const stats = {
+      total: rawUsers.length,
+      verified: rawUsers.filter((u) => Boolean(u.emailVerified)).length,
+      pendingVerification: rawUsers.filter((u) => !u.emailVerified).length,
+      active: rawUsers.filter((u) => (u.accountStatus || 'ACTIVE') === 'ACTIVE').length,
+      restricted: rawUsers.filter((u) => u.accountStatus === 'RESTRICTED').length,
+      suspended: rawUsers.filter((u) => u.accountStatus === 'SUSPENDED').length,
+      underReview: rawUsers.filter((u) => u.accountStatus === 'UNDER_REVIEW').length,
+      newToday: rawUsers.filter((u) => Boolean(u.createdAt && new Date(u.createdAt).getTime() >= todayStart.getTime())).length,
+      newThisWeek: rawUsers.filter((u) => Boolean(u.createdAt && new Date(u.createdAt).getTime() >= weekStart)).length,
+      newThisMonth: rawUsers.filter((u) => Boolean(u.createdAt && new Date(u.createdAt).getTime() >= monthStart)).length,
+    };
+
     const total = enriched.length;
     const offset = options?.offset || 0;
     const max = options?.limit || 50;
     const paginated = enriched.slice(offset, offset + max);
 
-    return { users: paginated, total };
+    return { users: paginated, total, stats };
   }
 
   /**

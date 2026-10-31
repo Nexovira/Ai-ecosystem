@@ -31,7 +31,18 @@ import { db } from '../../lib/firebase';
 
 async function fetchDirectFirestoreMetrics(): Promise<ManagementDashboardMetrics> {
   const zeroMetrics: ManagementDashboardMetrics = {
-    users: { total: 0, active: 0, restricted: 0, suspended: 0, underReview: 0 },
+    users: {
+      total: 0,
+      verified: 0,
+      pendingVerification: 0,
+      active: 0,
+      restricted: 0,
+      suspended: 0,
+      underReview: 0,
+      newToday: 0,
+      newThisWeek: 0,
+      newThisMonth: 0,
+    },
     marketplace: { totalProducts: 0, activeProducts: 0, pendingProducts: 0, totalSellers: 0, verifiedSellers: 0 },
     orders: { totalOrders: 0, pendingPayment: 0, paymentConfirmed: 0, processing: 0, shipped: 0, delivered: 0, cancelled: 0, totalRevenue: 0 },
     payments: { totalCount: 0, totalAmount: 0, verifiedCount: 0 },
@@ -54,12 +65,35 @@ async function fetchDirectFirestoreMetrics(): Promise<ManagementDashboardMetrics
 
     if (uSnap && !uSnap.empty) {
       zeroMetrics.users.total = uSnap.size;
+      const now = Date.now();
+      const todayStart = new Date();
+      todayStart.setUTCHours(0, 0, 0, 0);
+      const weekStart = now - 7 * 24 * 60 * 60 * 1000;
+      const monthStart = now - 30 * 24 * 60 * 60 * 1000;
+
       uSnap.forEach((d) => {
         const u = d.data();
+        if (u.emailVerified === true) {
+          zeroMetrics.users.verified++;
+        } else {
+          zeroMetrics.users.pendingVerification++;
+        }
+
         if (u.accountStatus === 'ACTIVE') zeroMetrics.users.active++;
         else if (u.accountStatus === 'RESTRICTED') zeroMetrics.users.restricted++;
         else if (u.accountStatus === 'SUSPENDED') zeroMetrics.users.suspended++;
         else if (u.accountStatus === 'UNDER_REVIEW') zeroMetrics.users.underReview++;
+
+        const createdMs = u.createdAt ? new Date(u.createdAt).getTime() : 0;
+        if (createdMs >= todayStart.getTime()) {
+          zeroMetrics.users.newToday++;
+        }
+        if (createdMs >= weekStart) {
+          zeroMetrics.users.newThisWeek++;
+        }
+        if (createdMs >= monthStart) {
+          zeroMetrics.users.newThisMonth++;
+        }
       });
     }
 
@@ -297,18 +331,25 @@ export const ManagementHubPage: React.FC = () => {
             </div>
           </div>
           <div>
-            <div className="text-2xl font-black text-white">{metrics?.users.total ?? '—'}</div>
-            <div className="text-[11px] text-[#CCD2D9]/70 mt-1 flex items-center gap-2">
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-black text-white">{metrics?.users.total ?? '—'}</span>
+              <span className="text-xs font-semibold text-emerald-400">
+                ({metrics?.users.verified ?? 0} verified)
+              </span>
+            </div>
+            <div className="text-[11px] text-[#CCD2D9]/70 mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
               <span className="text-emerald-400 font-semibold">{metrics?.users.active ?? 0} Active</span>
               <span>·</span>
-              <span className="text-amber-400 font-semibold">{metrics?.users.restricted ?? 0} Restricted</span>
+              <span className="text-amber-400 font-semibold">{metrics?.users.pendingVerification ?? 0} Pending</span>
+              <span>·</span>
+              <span className="text-[#08E6F9] font-semibold">+{metrics?.users.newThisWeek ?? 0} this wk</span>
             </div>
           </div>
           <button
             onClick={() => navigate('/management/users')}
             className="text-[11px] font-bold text-[#08E6F9] hover:underline flex items-center gap-1 cursor-pointer pt-1"
           >
-            Manage User Security <ArrowRight className="w-3 h-3" />
+            Manage User Registrations &amp; Security <ArrowRight className="w-3 h-3" />
           </button>
         </div>
 

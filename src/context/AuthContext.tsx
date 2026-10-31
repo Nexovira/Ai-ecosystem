@@ -7,6 +7,7 @@ import {
   signOut as firebaseSignOut,
   sendPasswordResetEmail,
   sendEmailVerification,
+  applyActionCode,
   updateProfile as updateFirebaseProfile,
   updatePassword as updateFirebasePassword,
   reauthenticateWithCredential,
@@ -34,12 +35,13 @@ interface AuthContextType {
     password: string,
     fullName: string,
     phoneNumber?: string
-  ) => Promise<{ success: boolean; error?: string }>;
+  ) => Promise<{ success: boolean; emailSent?: boolean; emailError?: string; error?: string }>;
   signInUser: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   signInWithGoogle: () => Promise<{ success: boolean; error?: string }>;
   signOutUser: () => Promise<void>;
   sendResetInstructions: (email: string) => Promise<{ success: boolean; message: string }>;
   resendVerificationEmail: () => Promise<{ success: boolean; message?: string; error?: string }>;
+  verifyEmailWithActionCode: (oobCode: string) => Promise<{ success: boolean; message?: string; error?: string }>;
   reloadCurrentUser: () => Promise<boolean>;
   updateUserProfileData: (data: {
     fullName?: string;
@@ -181,7 +183,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     password: string,
     fullName: string,
     phoneNumber?: string
-  ): Promise<{ success: boolean; error?: string }> => {
+  ): Promise<{ success: boolean; emailSent?: boolean; emailError?: string; error?: string }> => {
     setLoading(true);
     isRegisteringRef.current = true;
     try {
@@ -193,16 +195,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         displayName: fullName.trim(),
       });
 
-      // Send verification email
+      // Send verification email with actionCodeSettings
+      let emailSent = false;
+      let emailError: string | undefined = undefined;
+      const cleanEmail = (newUser.email || email).trim().toLowerCase();
       try {
-        await sendEmailVerification(newUser);
-      } catch (err) {
+        const origin = typeof window !== 'undefined' && window.location.origin
+          ? window.location.origin
+          : 'https://nexovira.com';
+        const actionCodeSettings = {
+          url: `${origin}/verify-email?email=${encodeURIComponent(cleanEmail)}`,
+          handleCodeInApp: true,
+        };
+        try {
+          await sendEmailVerification(newUser, actionCodeSettings);
+          emailSent = true;
+        } catch (linkErr: unknown) {
+          if (linkErr instanceof Error && linkErr.message.includes('auth/unauthorized-continue-uri')) {
+            await sendEmailVerification(newUser);
+            emailSent = true;
+          } else {
+            throw linkErr;
+          }
+        }
+      } catch (err: unknown) {
         console.warn('Email verification send issue:', err);
+        emailSent = false;
+        if (err instanceof Error) {
+          if (err.message.includes('auth/too-many-requests')) {
+            emailError = 'Please wait a minute before requesting another verification email.';
+          } else {
+            emailError = err.message;
+          }
+        } else {
+          emailError = 'Could not dispatch verification email automatically.';
+        }
       }
 
       // Create User Profile in Firestore
       const userDocRef = doc(db, 'users', newUser.uid);
-      const cleanEmail = (newUser.email || email).trim().toLowerCase();
       const isDefaultAdmin =
         cleanEmail === 'nexoviratech@gmail.com' ||
         cleanEmail === 'nexovirasupport@gmail.com';
@@ -264,7 +295,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updatedAt: new Date().toISOString(),
       });
 
-      return { success: true };
+      return { success: true, emailSent, emailError };
     } catch (err: unknown) {
       let message = 'Registration failed. Please check your credentials.';
       if (err instanceof Error) {
@@ -366,16 +397,67 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     error?: string;
   }> => {
     if (!auth.currentUser) {
-      return { success: false, error: 'No active session found.' };
+      return { success: false, error: 'No active session found. Please sign in to request a verification email.' };
     }
     try {
-      await sendEmailVerification(auth.currentUser);
-      return { success: true, message: 'Verification email dispatched. Please check your inbox.' };
+      const origin = typeof window !== 'undefined' && window.location.origin
+        ? window.location.origin
+        : 'https://nexovira.com';
+      const cleanEmail = auth.currentUser.email || '';
+      const actionCodeSettings = {
+        url: `${origin}/verify-email?email=${encodeURIComponent(cleanEmail)}`,
+        handleCodeInApp: true,
+      };
+      try {
+        await sendEmailVerification(auth.currentUser, actionCodeSettings);
+      } catch (err: unknown) {
+        if (err instanceof Error && err.message.includes('auth/unauthorized-continue-uri')) {
+          await sendEmailVerification(auth.currentUser);
+        } else {
+          throw err;
+        }
+      }
+      return { success: true, message: 'Verification link sent successfully. Please check your inbox and spam folder.' };
     } catch (err: unknown) {
       let msg = 'Could not send verification email.';
       if (err instanceof Error) {
         if (err.message.includes('auth/too-many-requests')) {
-          msg = 'Please wait before requesting another verification email.';
+          msg = 'Too many requests. Please wait a moment before requesting another verification email.';
+        } else {
+          msg = err.message;
+        }
+      }
+      return { success: false, error: msg };
+    }
+  };
+
+  // Verify Email with action code from link
+  const verifyEmailWithActionCode = async (
+    oobCode: string
+  ): Promise<{ success: boolean; message?: string; error?: string }> => {
+    try {
+      await applyActionCode(auth, oobCode);
+      if (auth.currentUser) {
+        await auth.currentUser.reload();
+        const updatedUser = auth.currentUser;
+        setUser({ ...updatedUser });
+        const userDocRef = doc(db, 'users', updatedUser.uid);
+        await updateDoc(userDocRef, {
+          emailVerified: true,
+          updatedAt: serverTimestamp(),
+        }).catch(() => null);
+        if (profile) {
+          setProfile({ ...profile, emailVerified: true });
+        }
+      }
+      return { success: true, message: 'Your email address has been successfully verified!' };
+    } catch (err: unknown) {
+      let msg = 'The verification link is invalid or has expired.';
+      if (err instanceof Error) {
+        if (err.message.includes('auth/invalid-action-code')) {
+          msg = 'This verification link is invalid or has already been used.';
+        } else if (err.message.includes('auth/expired-action-code')) {
+          msg = 'This verification link has expired. Please request a new verification email.';
         } else {
           msg = err.message;
         }
@@ -525,6 +607,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signOutUser,
         sendResetInstructions,
         resendVerificationEmail,
+        verifyEmailWithActionCode,
         reloadCurrentUser,
         updateUserProfileData,
         changePassword,

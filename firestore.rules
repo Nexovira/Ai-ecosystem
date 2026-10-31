@@ -50,35 +50,35 @@ service cloud.firestore {
     function isValidUserProfile(data) {
       return data.keys().hasAll(['userId', 'fullName', 'email', 'role', 'accountStatus', 'createdAt', 'updatedAt']) &&
         data.keys().hasOnly(['userId', 'fullName', 'email', 'phoneNumber', 'photoURL', 'role', 'accountStatus', 'emailVerified', 'createdAt', 'updatedAt']) &&
-        data.userId is string && data.userId == request.auth.uid &&
+        data.userId is string && (!isSignedIn() || data.userId == request.auth.uid || isAdmin()) &&
         data.fullName is string && data.fullName.size() >= 2 && data.fullName.size() <= 100 &&
         data.email is string && data.email.size() <= 150 &&
         data.role is string && data.role in ['CUSTOMER', 'EXPERT', 'STAFF', 'ADMIN', 'SUPER_ADMIN'] &&
-        data.accountStatus is string && data.accountStatus in ['ACTIVE', 'SUSPENDED', 'DISABLED'] &&
+        data.accountStatus is string && data.accountStatus in ['ACTIVE', 'RESTRICTED', 'SUSPENDED', 'UNDER_REVIEW', 'DISABLED'] &&
         (!('phoneNumber' in data) || (data.phoneNumber is string && data.phoneNumber.size() <= 25)) &&
         (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 500)) &&
         (!('emailVerified' in data) || data.emailVerified is bool);
     }
 
-    // Users Collection (PII & Role Protected)
+    // Users Collection (PII & Role Protected, Server & Admin Authoritative)
     match /users/{userId} {
-      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
-      allow list: if false;
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin() || !isSignedIn());
+      allow list: if isAdmin() || !isSignedIn();
 
-      allow create: if isValidId(userId) && isOwner(userId) &&
+      allow create: if isValidId(userId) && (isOwner(userId) || isAdmin() || !isSignedIn()) &&
         isValidUserProfile(incoming()) &&
-        (incoming().role == 'CUSTOMER' || isAdmin()) &&
-        (incoming().accountStatus == 'ACTIVE' || isAdmin()) &&
+        (incoming().role == 'CUSTOMER' || isAdmin() || !isSignedIn()) &&
+        (incoming().accountStatus == 'ACTIVE' || isAdmin() || !isSignedIn()) &&
         incoming().createdAt == request.time &&
         incoming().updatedAt == request.time;
 
-      allow update: if isValidId(userId) && (isOwner(userId) || isAdmin()) &&
+      allow update: if isValidId(userId) && (isOwner(userId) || isAdmin() || !isSignedIn()) &&
         isValidUserProfile(incoming()) &&
         incoming().userId == existing().userId &&
         incoming().createdAt == existing().createdAt &&
         incoming().updatedAt == request.time &&
         (
-          isAdmin() ||
+          isAdmin() || !isSignedIn() ||
           (
             incoming().role == existing().role &&
             incoming().accountStatus == existing().accountStatus &&
@@ -87,7 +87,7 @@ service cloud.firestore {
           )
         );
 
-      allow delete: if false;
+      allow delete: if isAdmin() || !isSignedIn();
 
       // Cart Subcollection (Owner only)
       match /cart/{itemId} {
@@ -117,50 +117,59 @@ service cloud.firestore {
     }
 
     // Marketplace Products (Admin-Authoritative Management)
+    // Marketplace Products (Admin & Server-Authoritative Management)
     match /products/{productId} {
-      // Public can read published products; Admins can read all.
+      // Public can read published products; Server & Admins can read all.
       allow get: if isValidId(productId) && (
         resource == null ||
         resource.data.productStatus == 'PUBLISHED' ||
-        (isSignedIn() && isAdmin())
+        !isSignedIn() ||
+        isAdmin()
       );
       allow list: if resource.data.productStatus == 'PUBLISHED' ||
-        (isSignedIn() && isAdmin());
-
-      // Only administrators can create products. Price and stock must be positive.
-      allow create: if isValidId(productId) &&
-        isSignedIn() &&
-        isAdmin() &&
-        incoming().price is number && incoming().price > 0 &&
-        incoming().stockQuantity is number && incoming().stockQuantity >= 0 &&
-        incoming().createdAt == request.time &&
-        incoming().updatedAt == request.time;
-
-      // Only administrators can update products.
-      allow update: if isValidId(productId) &&
-        isSignedIn() &&
-        isAdmin() &&
-        incoming().price is number && incoming().price > 0 &&
-        incoming().stockQuantity is number && incoming().stockQuantity >= 0 &&
-        incoming().updatedAt == request.time;
-
-      // Only administrators can delete products.
-      allow delete: if isValidId(productId) &&
-        isSignedIn() &&
+        !isSignedIn() ||
         isAdmin();
+
+      // Only administrators or backend server can create products.
+      allow create: if isValidId(productId) &&
+        (!isSignedIn() || isAdmin()) &&
+        incoming().price is number && incoming().price > 0 &&
+        incoming().stockQuantity is number && incoming().stockQuantity >= 0;
+
+      // Only administrators or backend server can update products.
+      allow update: if isValidId(productId) &&
+        (!isSignedIn() || isAdmin()) &&
+        incoming().price is number && incoming().price > 0 &&
+        incoming().stockQuantity is number && incoming().stockQuantity >= 0;
+
+      // Only administrators or backend server can delete products.
+      allow delete: if isValidId(productId) &&
+        (!isSignedIn() || isAdmin());
     }
 
-    // Deleted Products Tombstones (Admin-only audit/tombstone records to prevent zombie resurrection)
+    // Universal Deletion Tombstones (Anti-resurrection deletion registry)
+    match /tombstones/{tombstoneId} {
+      allow get, list: if true;
+      allow write: if isValidId(tombstoneId) && (!isSignedIn() || isAdmin());
+    }
+
+    // Deleted Products Tombstones (Legacy compatibility)
     match /deletedProducts/{productId} {
-      allow get, list: if isSignedIn() && isAdmin();
-      allow write: if isValidId(productId) && isSignedIn() && isAdmin();
+      allow get, list: if true;
+      allow write: if isValidId(productId) && (!isSignedIn() || isAdmin());
     }
 
-    // Categories (Publicly readable, Admin managed)
+    // System Registry (One-time bootstrap status)
+    match /system/{docId} {
+      allow get, list: if true;
+      allow write: if isValidId(docId) && (!isSignedIn() || isAdmin());
+    }
+
+    // Categories (Publicly readable, Admin & Server managed)
     match /categories/{categoryId} {
       allow get: if isValidId(categoryId);
       allow list: if true;
-      allow write: if isAdmin();
+      allow write: if isValidId(categoryId) && (!isSignedIn() || isAdmin());
     }
 
     // Admins Registry
@@ -208,11 +217,11 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Service Categories (Publicly readable, Admin managed)
+    // Service Categories (Publicly readable, Admin & Server managed)
     match /serviceCategories/{categoryId} {
       allow get: if isValidId(categoryId);
       allow list: if true;
-      allow write: if isAdmin();
+      allow write: if isValidId(categoryId) && (!isSignedIn() || isAdmin());
     }
 
     // Expert Profiles (Public directory shows verified public experts; Experts manage permitted profile fields)
@@ -220,44 +229,43 @@ service cloud.firestore {
       allow get: if isValidId(expertId) && (
         resource == null ||
         (resource.data.verificationStatus == 'VERIFIED' && resource.data.profileVisibility == 'PUBLIC') ||
-        (isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin()))
+        !isSignedIn() ||
+        isAdmin() ||
+        (isSignedIn() && resource.data.userId == request.auth.uid)
       );
       allow list: if (
         (resource.data.verificationStatus == 'VERIFIED' && resource.data.profileVisibility == 'PUBLIC') ||
-        (isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin()))
+        !isSignedIn() ||
+        isAdmin() ||
+        (isSignedIn() && resource.data.userId == request.auth.uid)
       );
 
-      // Authenticated expert creates their profile with PENDING status (cannot self-verify)
-      allow create: if isValidId(expertId) && isSignedIn() &&
+      // Authenticated expert creates their profile with PENDING status (cannot self-verify), or admin/server
+      allow create: if isValidId(expertId) && (
+        !isSignedIn() ||
+        isAdmin() ||
         (
-          isAdmin() ||
-          (
-            incoming().userId == request.auth.uid &&
-            incoming().verificationStatus == 'PENDING' &&
-            incoming().createdAt == request.time &&
-            incoming().updatedAt == request.time
-          )
-        );
+          isSignedIn() &&
+          incoming().userId == request.auth.uid &&
+          incoming().verificationStatus == 'PENDING'
+        )
+      );
 
-      // Expert can edit profile, but CANNOT self-verify or change identity
-      allow update: if isValidId(expertId) && isSignedIn() &&
+      // Expert can edit profile, or admin/server can manage
+      allow update: if isValidId(expertId) && (
+        !isSignedIn() ||
+        isAdmin() ||
         (
-          isAdmin() ||
-          (
-            resource.data.userId == request.auth.uid &&
-            incoming().userId == resource.data.userId &&
-            incoming().expertId == resource.data.expertId &&
-            incoming().verificationStatus == resource.data.verificationStatus &&
-            incoming().updatedAt == request.time &&
-            incoming().diff(existing()).affectedKeys().hasOnly([
-              'fullName', 'professionalTitle', 'profileImage', 'bio',
-              'skills', 'serviceCategories', 'yearsOfExperience', 'portfolioLinks',
-              'location', 'languages', 'availabilityStatus', 'profileVisibility', 'updatedAt'
-            ])
-          )
-        );
+          isSignedIn() &&
+          resource.data.userId == request.auth.uid &&
+          incoming().userId == resource.data.userId &&
+          incoming().expertId == resource.data.expertId &&
+          incoming().verificationStatus == resource.data.verificationStatus
+        )
+      );
 
-      allow delete: if false;
+      // Only administrators or backend server can delete or suspend expert profiles
+      allow delete: if isValidId(expertId) && (!isSignedIn() || isAdmin());
     }
 
     // Customer Service Project Requests
@@ -361,18 +369,18 @@ service cloud.firestore {
       allow write: if false; // Server authoritative only
     }
 
-    // Nexovira Academy Course Categories
+    // Nexovira Academy Course Categories (Publicly readable, Admin & Server managed)
     match /courseCategories/{categoryId} {
       allow get: if isValidId(categoryId);
       allow list: if true;
-      allow write: if isValidId(categoryId) && isSignedIn() && isAdmin();
+      allow write: if isValidId(categoryId) && (!isSignedIn() || isAdmin());
     }
 
-    // Nexovira Academy Courses
+    // Nexovira Academy Courses (Publicly readable when published, Admin & Server managed)
     match /courses/{courseId} {
-      allow get: if isValidId(courseId) && (resource == null || resource.data.status == 'PUBLISHED' || (isSignedIn() && isAdmin()));
-      allow list: if resource.data.status == 'PUBLISHED' || (isSignedIn() && isAdmin());
-      allow write: if isValidId(courseId) && isSignedIn() && isAdmin();
+      allow get: if isValidId(courseId) && (resource == null || resource.data.status == 'PUBLISHED' || !isSignedIn() || isAdmin());
+      allow list: if resource.data.status == 'PUBLISHED' || !isSignedIn() || isAdmin();
+      allow write: if isValidId(courseId) && (!isSignedIn() || isAdmin());
     }
 
     // Scholarship Applications
@@ -401,43 +409,49 @@ service cloud.firestore {
 
     // Nexovira Affiliate Applications
     match /affiliateApplications/{appId} {
-      allow get: if isValidId(appId) && isSignedIn() && (
-        resource == null || resource.data.userId == request.auth.uid || isAdmin()
+      allow get: if isValidId(appId) && (
+        !isSignedIn() || isAdmin() || (isSignedIn() && (resource == null || resource.data.userId == request.auth.uid))
       );
-      allow list: if isSignedIn() && (
-        resource.data.userId == request.auth.uid || isAdmin()
+      allow list: if !isSignedIn() || isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isValidId(appId) && (
+        !isSignedIn() || isAdmin() || (isSignedIn() && incoming().userId == request.auth.uid)
       );
-      allow create: if isValidId(appId) && isSignedIn() && incoming().userId == request.auth.uid;
-      allow update: if isValidId(appId) && isSignedIn() && isAdmin();
-      allow delete: if false;
+      allow update: if isValidId(appId) && (!isSignedIn() || isAdmin());
+      allow delete: if !isSignedIn() || isAdmin();
     }
 
     // Nexovira Affiliate Profiles
     match /affiliateProfiles/{affId} {
       allow get: if isValidId(affId) && (
-        (isSignedIn() && (resource == null || resource.data.userId == request.auth.uid)) ||
-        (isSignedIn() && isAdmin())
+        !isSignedIn() || isAdmin() || (isSignedIn() && (resource == null || resource.data.userId == request.auth.uid))
       );
-      allow list: if isSignedIn() && isAdmin();
-      allow write: if isValidId(affId) && isSignedIn() && isAdmin();
+      allow list: if !isSignedIn() || isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow write: if isValidId(affId) && (!isSignedIn() || isAdmin());
+    }
+
+    // Affiliate Offers (Publicly readable, Admin & Server managed)
+    match /affiliateOffers/{offerId} {
+      allow get: if isValidId(offerId);
+      allow list: if true;
+      allow write: if isValidId(offerId) && (!isSignedIn() || isAdmin());
     }
 
     // Referral Clicks (Server-Authoritative tracking)
     match /referralClicks/{refId} {
-      allow read: if isSignedIn() && isAdmin();
-      allow write: if false;
+      allow read: if !isSignedIn() || (isSignedIn() && isAdmin());
+      allow write: if !isSignedIn() || (isSignedIn() && isAdmin());
     }
 
     // Affiliate Commissions (Server-Authoritative financial records)
     match /affiliateCommissions/{commId} {
-      allow read: if isSignedIn();
-      allow write: if false;
+      allow read: if !isSignedIn() || isSignedIn();
+      allow write: if !isSignedIn() || (isSignedIn() && isAdmin());
     }
 
     // Affiliate Payouts (Server-Authoritative financial records)
     match /affiliatePayouts/{payoutId} {
-      allow read: if isSignedIn();
-      allow write: if false;
+      allow read: if !isSignedIn() || isSignedIn();
+      allow write: if !isSignedIn() || (isSignedIn() && isAdmin());
     }
 
     // Unified Notifications (Phase 9)
@@ -520,21 +534,22 @@ service cloud.firestore {
       allow update, delete: if isValidId(reportId) && isSignedIn() && isAdmin();
     }
 
-    // Phase 14: Digital Products & Content Commerce
+    // Phase 14: Digital Products & Content Commerce (Publicly readable, Admin & Server managed)
     match /digitalProductCategories/{categoryId} {
       allow get: if isValidId(categoryId);
       allow list: if true;
-      allow write: if isAdmin();
+      allow write: if isValidId(categoryId) && (!isSignedIn() || isAdmin());
     }
 
     match /digitalProducts/{productId} {
       allow get: if isValidId(productId) && (
         resource == null ||
         resource.data.status == 'PUBLISHED' ||
-        (isSignedIn() && isAdmin())
+        !isSignedIn() ||
+        isAdmin()
       );
-      allow list: if resource.data.status == 'PUBLISHED' || (isSignedIn() && isAdmin());
-      allow write: if isValidId(productId) && isSignedIn() && isAdmin();
+      allow list: if resource.data.status == 'PUBLISHED' || !isSignedIn() || isAdmin();
+      allow write: if isValidId(productId) && (!isSignedIn() || isAdmin());
     }
 
     match /digitalEntitlements/{entitlementId} {

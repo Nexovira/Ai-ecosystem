@@ -15,6 +15,7 @@ import { collection, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore'
 import { affiliateService } from './affiliateService';
 import { notificationService } from './notificationService';
 import { sanitizeFirestoreData } from '../utils/productNormalization';
+import { antiResurrectionService } from './antiResurrectionService';
 
 export class AcademyService {
   private courses: Map<string, Course> = new Map();
@@ -25,30 +26,33 @@ export class AcademyService {
   private isInitialized = false;
 
   constructor() {
+    INITIAL_COURSES.forEach((c) => {
+      if (!antiResurrectionService.isTombstoned('course', c.courseId)) {
+        this.courses.set(c.courseId, c);
+      }
+    });
+    INITIAL_COURSE_CATEGORIES.forEach((cat) => {
+      if (!antiResurrectionService.isTombstoned('course_category', cat.id)) {
+        this.categories.set(cat.id, cat);
+      }
+    });
     this.seedData();
   }
 
   private async seedData() {
     if (this.isInitialized) return;
 
-    // Seed default categories
-    INITIAL_COURSE_CATEGORIES.forEach((cat) => {
-      this.categories.set(cat.id, { ...cat });
-    });
-
-    // Seed default courses
-    INITIAL_COURSES.forEach((crs) => {
-      this.courses.set(crs.courseId, { ...crs });
-    });
-
-    // Non-blocking attempt to read any Firestore overrides if present
+    // Load persistent data from Firestore single source of truth
     try {
       if (db) {
         const catSnap = await getDocs(collection(db, 'courseCategories')).catch(() => null);
         if (catSnap && !catSnap.empty) {
           catSnap.forEach((doc) => {
             const data = doc.data() as CourseCategory;
-            this.categories.set(data.id || doc.id, { ...data, id: data.id || doc.id });
+            const catId = data.id || doc.id;
+            if (!antiResurrectionService.isTombstoned('course_category', catId)) {
+              this.categories.set(catId, { ...data, id: catId });
+            }
           });
         }
 
@@ -56,7 +60,10 @@ export class AcademyService {
         if (crsSnap && !crsSnap.empty) {
           crsSnap.forEach((doc) => {
             const data = doc.data() as Course;
-            this.courses.set(data.courseId || doc.id, { ...data, courseId: data.courseId || doc.id });
+            const courseId = data.courseId || doc.id;
+            if (!antiResurrectionService.isTombstoned('course', courseId)) {
+              this.courses.set(courseId, { ...data, courseId });
+            }
           });
         }
 
@@ -80,6 +87,23 @@ export class AcademyService {
       }
     } catch {
       // In-memory defaults are safe and active
+    }
+
+    // If Firestore has not been seeded yet, populate initial catalog while strictly respecting anti-resurrection tombstones
+    if (this.courses.size === 0) {
+      INITIAL_COURSES.forEach((c) => {
+        if (!antiResurrectionService.isTombstoned('course', c.courseId)) {
+          this.courses.set(c.courseId, c);
+        }
+      });
+    }
+
+    if (this.categories.size === 0) {
+      INITIAL_COURSE_CATEGORIES.forEach((cat) => {
+        if (!antiResurrectionService.isTombstoned('course_category', cat.id)) {
+          this.categories.set(cat.id, cat);
+        }
+      });
     }
 
     this.isInitialized = true;
@@ -222,6 +246,13 @@ export class AcademyService {
     }
 
     this.categories.delete(category.id);
+    antiResurrectionService.recordTombstone(
+      'course_category',
+      category.id,
+      userRole,
+      'DELETED',
+      `Course category ${category.name} deleted by administrator`
+    ).catch(() => null);
     if (db) {
       deleteDoc(doc(db, 'courseCategories', category.id)).catch(() => null);
     }
@@ -374,6 +405,13 @@ export class AcademyService {
     if (!['ADMIN', 'SUPER_ADMIN'].includes(userRole)) {
       throw new Error('Forbidden: Super Admin or Admin role required to delete courses');
     }
+    antiResurrectionService.recordTombstone(
+      'course',
+      courseId,
+      userRole,
+      'DELETED',
+      'Course permanently deleted by administrator'
+    ).catch(() => null);
     deleteDoc(doc(db, 'courses', courseId)).catch((err) => {
       console.warn('Firestore course delete notice:', err);
     });

@@ -159,51 +159,52 @@ class AffiliateService {
     if (this.initialized) return;
     this.initialized = true;
 
-    if (!auth || !auth.currentUser) {
-      // In server runtime without an active client auth session, operate authoritatively in memory
-      return;
-    }
-
     try {
-      // Sync applications from Firestore
-      const appSnap = await getDocs(collection(db, 'affiliateApplications')).catch(() => null);
-      if (appSnap && !appSnap.empty) {
-        appSnap.forEach((doc) => {
-          const data = doc.data() as AffiliateApplication;
-          this.applications.set(data.applicationId, data);
-        });
-      }
+      if (db) {
+        // Sync applications from Firestore single source of truth
+        const appSnap = await getDocs(collection(db, 'affiliateApplications')).catch(() => null);
+        if (appSnap && !appSnap.empty) {
+          appSnap.forEach((docSnap) => {
+            const data = docSnap.data() as AffiliateApplication;
+            const id = data.applicationId || docSnap.id;
+            this.applications.set(id, { ...data, applicationId: id });
+          });
+        }
 
-      // Sync affiliate profiles from Firestore
-      const affSnap = await getDocs(collection(db, 'affiliateProfiles')).catch(() => null);
-      if (affSnap && !affSnap.empty) {
-        affSnap.forEach((doc) => {
-          const data = doc.data() as AffiliateProfile;
-          this.affiliates.set(data.affiliateId, data);
-          this.affiliateByUserId.set(data.userId, data.affiliateId);
-          this.affiliateByCode.set(data.affiliateCode.toUpperCase(), data.affiliateId);
-        });
-      }
+        // Sync affiliate profiles from Firestore
+        const affSnap = await getDocs(collection(db, 'affiliateProfiles')).catch(() => null);
+        if (affSnap && !affSnap.empty) {
+          affSnap.forEach((docSnap) => {
+            const data = docSnap.data() as AffiliateProfile;
+            const id = data.affiliateId || docSnap.id;
+            this.affiliates.set(id, { ...data, affiliateId: id });
+            this.affiliateByUserId.set(data.userId, id);
+            this.affiliateByCode.set(data.affiliateCode.toUpperCase(), id);
+          });
+        }
 
-      // Sync commissions from Firestore
-      const commSnap = await getDocs(collection(db, 'affiliateCommissions')).catch(() => null);
-      if (commSnap && !commSnap.empty) {
-        commSnap.forEach((doc) => {
-          const data = doc.data() as CommissionRecord;
-          this.commissions.set(data.commissionId, data);
-        });
-      }
+        // Sync commissions from Firestore
+        const commSnap = await getDocs(collection(db, 'affiliateCommissions')).catch(() => null);
+        if (commSnap && !commSnap.empty) {
+          commSnap.forEach((docSnap) => {
+            const data = docSnap.data() as CommissionRecord;
+            const id = data.commissionId || docSnap.id;
+            this.commissions.set(id, { ...data, commissionId: id });
+          });
+        }
 
-      // Sync payouts from Firestore
-      const paySnap = await getDocs(collection(db, 'affiliatePayouts')).catch(() => null);
-      if (paySnap && !paySnap.empty) {
-        paySnap.forEach((doc) => {
-          const data = doc.data() as PayoutRequest;
-          this.payouts.set(data.payoutId, data);
-        });
+        // Sync payouts from Firestore
+        const paySnap = await getDocs(collection(db, 'affiliatePayouts')).catch(() => null);
+        if (paySnap && !paySnap.empty) {
+          paySnap.forEach((docSnap) => {
+            const data = docSnap.data() as PayoutRequest;
+            const id = data.payoutId || docSnap.id;
+            this.payouts.set(id, { ...data, payoutId: id });
+          });
+        }
       }
-    } catch {
-      // Memory cache is authoritative fallback
+    } catch (err) {
+      console.warn('Firestore affiliate initialization notice:', err);
     }
   }
 
@@ -234,7 +235,7 @@ class AffiliateService {
       }
     }
 
-    // Check existing pending application
+    // Check existing pending application in memory
     for (const app of this.applications.values()) {
       if (app.userId === params.userId && app.status === 'PENDING_REVIEW') {
         return {
@@ -264,11 +265,11 @@ class AffiliateService {
 
     this.applications.set(applicationId, application);
 
-    if (auth && auth.currentUser) {
+    if (db) {
       try {
-        await setDoc(doc(db, 'affiliateApplications', applicationId), application).catch(() => null);
-      } catch {
-        // Preserved in memory cache
+        await setDoc(doc(db, 'affiliateApplications', applicationId), application);
+      } catch (err) {
+        console.warn('Firestore setDoc affiliateApplications notice:', err);
       }
     }
 
@@ -361,16 +362,18 @@ class AffiliateService {
       this.affiliateByUserId.set(application.userId, affId);
       this.affiliateByCode.set(affCode.toUpperCase(), affId);
 
-      if (auth && auth.currentUser) {
+      if (db) {
         try {
-          await setDoc(doc(db, 'affiliateProfiles', affId), profile).catch(() => null);
-        } catch {
-          // Preserved in memory cache
+          await setDoc(doc(db, 'affiliateProfiles', affId), profile);
+          // Also mark user record in Firestore as having affiliate capability
+          await setDoc(doc(db, 'users', application.userId), { updatedAt: new Date().toISOString() }, { merge: true }).catch(() => null);
+        } catch (err) {
+          console.warn('Firestore affiliateProfiles write notice:', err);
         }
       }
     }
 
-    if (auth && auth.currentUser) {
+    if (db) {
       try {
         await updateDoc(doc(db, 'affiliateApplications', application.applicationId), {
           status: application.status,
@@ -378,9 +381,9 @@ class AffiliateService {
           reviewedDate: application.reviewedDate,
           reviewNotes: application.reviewNotes,
           updatedAt: application.updatedAt,
-        }).catch(() => null);
-      } catch {
-        // Preserved in memory cache
+        });
+      } catch (err) {
+        console.warn('Firestore affiliateApplications update notice:', err);
       }
     }
 

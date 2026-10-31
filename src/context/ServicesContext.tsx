@@ -75,12 +75,10 @@ const ServicesContext = createContext<ServicesContextType | undefined>(undefined
 export const ServicesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, profile } = useAuth();
 
-  const [categories, setCategories] = useState<ServiceCategory[]>(INITIAL_SERVICE_CATEGORIES);
+  const [categories, setCategories] = useState<ServiceCategory[]>([]);
   const [loadingCategories, setLoadingCategories] = useState<boolean>(true);
 
-  const [experts, setExperts] = useState<PublicExpert[]>(() =>
-    INITIAL_EXPERTS.filter((e) => e.verificationStatus === 'VERIFIED').map(({ userId, ...safe }) => safe)
-  );
+  const [experts, setExperts] = useState<PublicExpert[]>([]);
   const [loadingExperts, setLoadingExperts] = useState<boolean>(false);
 
   const [expertProfile, setExpertProfile] = useState<ExpertProfile | null>(null);
@@ -130,11 +128,11 @@ export const ServicesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setLoadingCategories(true);
       const res = await fetch('/api/services/categories?includeInactive=true');
       const data = await res.json();
-      if (data.success && Array.isArray(data.categories) && data.categories.length > 0) {
+      if (data.success && Array.isArray(data.categories)) {
         setCategories(data.categories);
       }
     } catch {
-      // Retain fallback
+      // Safe catch
     } finally {
       setLoadingCategories(false);
     }
@@ -166,8 +164,8 @@ export const ServicesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } finally {
       setLoadingExperts(false);
     }
-    return experts;
-  }, [experts]);
+    return [];
+  }, []);
 
   // Initial load
   useEffect(() => {

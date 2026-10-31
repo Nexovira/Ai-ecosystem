@@ -22,16 +22,34 @@ export const RegisterPage: React.FC = () => {
 
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [justRegistered, setJustRegistered] = useState(false);
+  const [registrationSuccess, setRegistrationSuccess] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState('');
+  const [emailSent, setEmailSent] = useState(true);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [resending, setResending] = useState(false);
+  const [checkingVerification, setCheckingVerification] = useState(false);
+  const [resendFeedback, setResendFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  // If already logged in, redirect to account via effect (never during render)
+  const { resendVerificationEmail, reloadCurrentUser } = useAuth();
+
+  // Cooldown countdown timer for resending verification email
   React.useEffect(() => {
-    if (user && !justRegistered && !loading) {
+    let timer: NodeJS.Timeout;
+    if (resendCooldown > 0) {
+      timer = setTimeout(() => setResendCooldown((c) => c - 1), 1000);
+    }
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
+
+  // If already logged in AND NOT on confirmation screen, redirect to account
+  React.useEffect(() => {
+    if (user && !registrationSuccess && !loading) {
       navigate('/account');
     }
-  }, [user, justRegistered, loading, navigate]);
+  }, [user, registrationSuccess, loading, navigate]);
 
-  if (user && !justRegistered && !loading) {
+  if (user && !registrationSuccess && !loading) {
     return null;
   }
 
@@ -47,6 +65,7 @@ export const RegisterPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
+    setResendFeedback(null);
 
     if (fullName.trim().length < 2) {
       setErrorMessage('Full name must be at least 2 characters long.');
@@ -69,9 +88,9 @@ export const RegisterPage: React.FC = () => {
     }
 
     setLoading(true);
-    setJustRegistered(true);
+    const targetEmail = email.trim();
     const result = await registerUser(
-      email.trim(),
+      targetEmail,
       password,
       fullName.trim(),
       phoneNumber.trim() || undefined
@@ -79,12 +98,196 @@ export const RegisterPage: React.FC = () => {
     setLoading(false);
 
     if (result.success) {
-      navigate('/verify-email');
+      setRegisteredEmail(targetEmail);
+      setEmailSent(result.emailSent !== false);
+      setEmailError(result.emailError || null);
+      setRegistrationSuccess(true);
     } else {
-      setJustRegistered(false);
       setErrorMessage(result.error || 'Registration failed. Please review your input.');
     }
   };
+
+  const handleResendVerification = async () => {
+    if (resendCooldown > 0 || resending) return;
+    setResending(true);
+    setResendFeedback(null);
+
+    const res = await resendVerificationEmail();
+    setResending(false);
+
+    if (res.success) {
+      setEmailSent(true);
+      setEmailError(null);
+      setResendFeedback({
+        type: 'success',
+        message: res.message || 'Verification link dispatched successfully. Please check your inbox.',
+      });
+      setResendCooldown(60);
+    } else {
+      setResendFeedback({
+        type: 'error',
+        message: res.error || 'Failed to dispatch verification email. Please try again.',
+      });
+    }
+  };
+
+  const handleCheckVerification = async () => {
+    setCheckingVerification(true);
+    setResendFeedback(null);
+    const isVerified = await reloadCurrentUser();
+    setCheckingVerification(false);
+
+    if (isVerified) {
+      setResendFeedback({
+        type: 'success',
+        message: 'Email confirmed! Your account is active. Redirecting to your dashboard...',
+      });
+      setTimeout(() => navigate('/account'), 1200);
+    } else {
+      setResendFeedback({
+        type: 'error',
+        message: 'Email not yet verified. Please click the link received in your inbox and try again.',
+      });
+    }
+  };
+
+  // Dedicated Registration Confirmation Screen
+  if (registrationSuccess) {
+    return (
+      <div className="py-16 sm:py-24 bg-[#F7F8FA] min-h-[85vh] flex items-center justify-center relative overflow-hidden">
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[320px] bg-gradient-to-r from-[#08B3F8]/10 to-[#0169FA]/5 blur-3xl rounded-full pointer-events-none" />
+
+        <Container size="narrow" className="relative z-10">
+          <div className="max-w-md mx-auto">
+            {/* Header / Brand */}
+            <div className="text-center space-y-3 mb-6">
+              <div className="inline-flex justify-center mb-1">
+                <Logo size="md" variant="dark" onClick={() => navigate('/')} />
+              </div>
+            </div>
+
+            {/* Confirmation Card */}
+            <div className="bg-white border border-[#E8EDF2] rounded-3xl p-6 sm:p-8 shadow-xl shadow-slate-200/50 text-center space-y-6">
+              <div className="w-16 h-16 rounded-2xl bg-[#0169FA]/10 border border-[#0169FA]/20 flex items-center justify-center text-[#0169FA] mx-auto">
+                <Mail className="w-8 h-8" />
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-xs font-semibold tracking-wider text-[#0169FA] uppercase">
+                  Account Created
+                </div>
+                <h1 className="font-display font-extrabold text-2xl sm:text-3xl text-[#14283F] tracking-tight">
+                  Check Your Email
+                </h1>
+                <p className="text-xs sm:text-sm text-[#14283F] font-medium leading-relaxed">
+                  Your Nexovira account has been created successfully. We've sent a verification link to your email address.
+                </p>
+              </div>
+
+              {/* Email Address Display */}
+              <div className="p-3 rounded-xl bg-[#F7F8FA] border border-[#E8EDF2] text-xs font-mono font-semibold text-[#14283F] break-all">
+                {registeredEmail}
+              </div>
+
+              <div className="text-xs text-[#6B7280] space-y-2 text-left bg-slate-50 p-4 rounded-xl border border-slate-100">
+                <p className="leading-relaxed text-[#14283F] font-medium">
+                  Please check your inbox and click the verification link to activate your email address.
+                </p>
+                <p className="leading-relaxed">
+                  Can't find the email? Check your spam or junk folder.
+                </p>
+              </div>
+
+              {/* Email Delivery Warning if initial send failed */}
+              {!emailSent && (
+                <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 text-left flex items-start gap-2.5">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold">Verification email pending dispatch:</span>{' '}
+                    <span>{emailError || 'Could not deliver automatically. Please click "Resend Verification Email" below.'}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Feedback Alert */}
+              {resendFeedback && (
+                <div
+                  className={`p-3.5 rounded-xl border text-xs text-left flex items-start gap-2.5 animate-in fade-in ${
+                    resendFeedback.type === 'success'
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                      : 'bg-red-50 border-red-200 text-red-800'
+                  }`}
+                >
+                  {resendFeedback.type === 'success' ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                  )}
+                  <span className="leading-relaxed">{resendFeedback.message}</span>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="space-y-3 pt-2">
+                <Button
+                  variant="primary"
+                  size="md"
+                  fullWidth
+                  disabled={checkingVerification}
+                  onClick={handleCheckVerification}
+                >
+                  {checkingVerification ? (
+                    <span className="flex items-center gap-2">
+                      <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Checking verification status...</span>
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>I Have Verified My Email</span>
+                    </span>
+                  )}
+                </Button>
+
+                <Button
+                  variant="secondary"
+                  size="md"
+                  fullWidth
+                  disabled={resendCooldown > 0 || resending}
+                  onClick={handleResendVerification}
+                >
+                  {resending ? (
+                    <span className="flex items-center gap-2">
+                      <span className="w-4 h-4 border-2 border-[#0169FA] border-t-transparent rounded-full animate-spin" />
+                      <span>Sending verification link...</span>
+                    </span>
+                  ) : resendCooldown > 0 ? (
+                    <span>Resend available in {resendCooldown}s</span>
+                  ) : (
+                    <span className="flex items-center gap-2">
+                      <Mail className="w-4 h-4 text-[#0169FA]" />
+                      <span>Resend Verification Email</span>
+                    </span>
+                  )}
+                </Button>
+              </div>
+
+              {/* Navigation Back */}
+              <div className="pt-2 border-t border-[#E8EDF2] flex items-center justify-center">
+                <button
+                  type="button"
+                  onClick={() => navigate('/signin')}
+                  className="text-xs text-[#0169FA] hover:underline font-bold cursor-pointer"
+                >
+                  Back to Sign In
+                </button>
+              </div>
+            </div>
+          </div>
+        </Container>
+      </div>
+    );
+  }
 
   return (
     <div className="py-16 sm:py-24 bg-[#F7F8FA] min-h-[85vh] flex items-center justify-center relative overflow-hidden">

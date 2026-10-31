@@ -971,6 +971,32 @@
         "status": { "type": "string", "enum": ["DRAFT", "POSTED", "REVERSED", "FAILED"], "description": "Posting status" }
       },
       "required": ["id", "journalEntryId", "journalReference", "sourceTransactionId", "currency", "totalDebit", "totalCredit", "isBalanced", "status"]
+    },
+    "TombstoneRecord": {
+      "title": "TombstoneRecord",
+      "description": "Universal deletion tombstone preventing deleted records from resurrecting across all environments and reboots",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique tombstone identifier, typically resourceType_resourceId" },
+        "resourceType": { "type": "string", "description": "Type of deleted entity (e.g., product, expert, course, service)" },
+        "resourceId": { "type": "string", "description": "Original resource ID" },
+        "status": { "type": "string", "enum": ["DELETED", "ARCHIVED"], "description": "Deletion or archival mode" },
+        "deletedAt": { "type": "string", "format": "date-time", "description": "Timestamp of deletion" },
+        "deletedBy": { "type": "string", "description": "Administrator ID or email who authorized deletion" },
+        "reason": { "type": "string", "description": "Audit reason for resource removal" }
+      },
+      "required": ["id", "resourceType", "resourceId", "status", "deletedAt"]
+    },
+    "SystemRecord": {
+      "title": "SystemRecord",
+      "description": "Ecosystem operational metadata and single-execution bootstrap markers",
+      "type": "object",
+      "properties": {
+        "initialized": { "type": "boolean", "description": "True if database bootstrap has executed" },
+        "seededAt": { "type": "string", "format": "date-time", "description": "Timestamp of initial database hydration" },
+        "version": { "type": "number", "description": "Schema version" }
+      },
+      "required": ["initialized"]
     }
   },
   "firestore": {
@@ -1105,6 +1131,14 @@
     "/accountingJournal/{journalEntryId}": {
       "schema": "JournalEntry",
       "description": "Double-entry accounting journal vouchers."
+    },
+    "/tombstones/{tombstoneId}": {
+      "schema": "TombstoneRecord",
+      "description": "Universal deletion tombstones. Publicly readable to prevent stale resurrection across clients; writable by backend and administrators."
+    },
+    "/system/{docId}": {
+      "schema": "SystemRecord",
+      "description": "System state registry and single-run database bootstrap status."
     }
   }
 }

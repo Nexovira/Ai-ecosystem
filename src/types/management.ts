@@ -289,10 +289,15 @@ export interface ManagementAuditRecord {
 export interface ManagementDashboardMetrics {
   users: {
     total: number;
+    verified: number;
+    pendingVerification: number;
     active: number;
     restricted: number;
     suspended: number;
     underReview: number;
+    newToday: number;
+    newThisWeek: number;
+    newThisMonth: number;
   };
   marketplace: {
     totalProducts: number;

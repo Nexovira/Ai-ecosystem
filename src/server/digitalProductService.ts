@@ -25,6 +25,7 @@ import { notificationService } from './notificationService';
 import { managementService } from './managementService';
 import { affiliateService } from './affiliateService';
 import { sanitizeFirestoreData } from '../utils/productNormalization';
+import { antiResurrectionService } from './antiResurrectionService';
 
 // Text sanitizer helper
 function sanitizeText(str: string): string {
@@ -416,11 +417,6 @@ export class DigitalProductService {
     if (this.isInitialized) return;
     this.isInitialized = true;
 
-    if (!auth || !auth.currentUser) {
-      // Server runs in memory-authoritative mode without active client session
-      return;
-    }
-
     try {
       if (db) {
         // Load categories from Firestore
@@ -428,7 +424,9 @@ export class DigitalProductService {
         if (catSnap && !catSnap.empty) {
           catSnap.forEach((d) => {
             const data = d.data() as DigitalProductCategory;
-            this.categoriesCache.set(data.id, data);
+            if (!antiResurrectionService.isTombstoned('digital_category', data.id)) {
+              this.categoriesCache.set(data.id, data);
+            }
           });
         }
 
@@ -437,7 +435,9 @@ export class DigitalProductService {
         if (prodSnap && !prodSnap.empty) {
           prodSnap.forEach((d) => {
             const data = d.data() as DigitalProduct;
-            this.productsCache.set(data.productId, data);
+            if (!antiResurrectionService.isTombstoned('digital_product', data.productId)) {
+              this.productsCache.set(data.productId, data);
+            }
           });
         }
 
@@ -898,6 +898,13 @@ export class DigitalProductService {
     if (permanent && isAdmin && !hasEntitlements) {
       // Safe permanent deletion: 0 customer entitlements exist
       this.productsCache.delete(productId);
+      antiResurrectionService.recordTombstone(
+        'digital_product',
+        productId,
+        creatorId,
+        'DELETED',
+        'Digital product permanently removed by administrator'
+      ).catch(() => null);
       if (db) {
         deleteDoc(doc(db, 'digitalProducts', productId)).catch(() => null);
       }

@@ -30,6 +30,7 @@ import { digitalProductService } from './digitalProductService';
 import { walletService, roundMoney } from './walletService';
 import { transactionAccountingService } from './transactionAccountingService';
 import { sanitizeFirestoreData } from '../utils/productNormalization';
+import { antiResurrectionService } from './antiResurrectionService';
 
 const FLAT_DELIVERY_FEE = 3500; // ₦3,500 flat delivery across major commercial hubs
 
@@ -40,22 +41,25 @@ export class CommerceService {
   private deletedProductIds: Set<string> = new Set();
 
   /**
-   * Helper to retrieve a product by ID, checking Firestore first and fallback catalog second.
+   * Helper to retrieve a product by ID, checking Firestore as the single source of truth.
+   * Enforces Anti-Resurrection: Deleted or tombstoned items will NEVER be returned or fallback to memory.
    */
   async getProductById(productId: string): Promise<Product | null> {
-    if (this.deletedProductIds.has(productId)) {
+    if (antiResurrectionService.isTombstoned('product', productId) || this.deletedProductIds.has(productId)) {
       return null;
     }
     try {
       const pDoc = await getDoc(doc(db, 'products', productId)).catch(() => null);
       if (pDoc && pDoc.exists()) {
-        return pDoc.data() as Product;
+        const prod = pDoc.data() as Product;
+        if (prod && !antiResurrectionService.isTombstoned('product', prod.productId)) {
+          return prod;
+        }
       }
     } catch {
-      // Safe fallback
+      // Safe error handling
     }
-    const fallback = INITIAL_PRODUCTS.find((p) => p.productId === productId);
-    return fallback || null;
+    return null;
   }
 
   /**
@@ -922,41 +926,26 @@ export class CommerceService {
 
   /**
    * Retrieves all products across the marketplace catalog for management.
+   * Authoritative Firestore single source of truth.
    */
   async getAllProductsForManagement(): Promise<Product[]> {
-    // Load deleted product IDs if not already populated
-    try {
-      const delSnap = await getDocs(collection(db, 'deletedProducts')).catch(() => null);
-      if (delSnap && delSnap.docs) {
-        delSnap.forEach((d) => this.deletedProductIds.add(d.id));
-      }
-    } catch {
-      // Fallback
-    }
-
     const list: Product[] = [];
-    const seenIds = new Set<string>();
 
     try {
       const snap = await getDocs(collection(db, 'products')).catch(() => null);
       if (snap && snap.docs && snap.docs.length > 0) {
         snap.forEach((d) => {
           const p = d.data() as Product;
-          if (!this.deletedProductIds.has(p.productId)) {
+          if (
+            !antiResurrectionService.isTombstoned('product', p.productId) &&
+            !this.deletedProductIds.has(p.productId)
+          ) {
             list.push(p);
-            seenIds.add(p.productId);
           }
         });
       }
     } catch {
-      // Fallback
-    }
-
-    // Merge baseline catalog products only if they have not been deleted or overwritten in Firestore
-    for (const initProd of INITIAL_PRODUCTS) {
-      if (!this.deletedProductIds.has(initProd.productId) && !seenIds.has(initProd.productId)) {
-        list.push(initProd);
-      }
+      // Safe catch
     }
 
     return list;
@@ -965,6 +954,7 @@ export class CommerceService {
   /**
    * Delete or safely archive a product by management.
    * Checks order history to protect historical transaction integrity.
+   * Permanently writes tombstone to Firestore to prevent resurrection.
    */
   async deleteProductByManagement(
     productId: string,
@@ -977,17 +967,14 @@ export class CommerceService {
 
     this.deletedProductIds.add(productId);
 
-    // Persist deleted product record in Firestore
-    try {
-      await setDoc(doc(db, 'deletedProducts', productId), {
-        productId,
-        deletedBy: actorId,
-        deletedAt: new Date().toISOString(),
-        mode: isReferencedInOrders ? 'ARCHIVED' : 'DELETED',
-      }).catch(() => null);
-    } catch (err) {
-      console.warn('Firestore deletedProducts write notice:', err);
-    }
+    // Persist permanent anti-resurrection tombstone
+    await antiResurrectionService.recordTombstone(
+      'product',
+      productId,
+      actorId,
+      isReferencedInOrders ? 'ARCHIVED' : 'DELETED',
+      isReferencedInOrders ? 'Archived due to historical orders' : 'Permanently removed by administrator'
+    );
 
     if (isReferencedInOrders) {
       // Soft-archive to preserve past orders and customer receipts
@@ -1009,7 +996,7 @@ export class CommerceService {
         message: 'Product has recorded customer orders. Safely archived and hidden from public storefront and catalog.',
       };
     } else {
-      // Permanent removal from catalog
+      // Permanent removal from Firestore
       try {
         await deleteDoc(doc(db, 'products', productId)).catch(() => null);
       } catch (err) {
@@ -1057,24 +1044,22 @@ export class CommerceService {
 
   /**
    * Retrieves all marketplace categories for management.
+   * Single source of truth from Firestore with anti-resurrection tombstone filtering.
    */
   async getAllCategoriesForManagement(): Promise<Category[]> {
-    const list: Category[] = [...INITIAL_CATEGORIES];
+    const list: Category[] = [];
     try {
       const snap = await getDocs(collection(db, 'categories')).catch(() => null);
       if (snap && snap.docs) {
         snap.forEach((d) => {
           const c = d.data() as Category;
-          const idx = list.findIndex((existing) => existing.categoryId === c.categoryId);
-          if (idx >= 0) {
-            list[idx] = c;
-          } else {
+          if (!antiResurrectionService.isTombstoned('category', c.categoryId)) {
             list.push(c);
           }
         });
       }
     } catch {
-      // Graceful fallback
+      // Graceful error handling
     }
     return list.sort((a, b) => (a.order || 0) - (b.order || 0));
   }
@@ -1112,6 +1097,7 @@ export class CommerceService {
 
   /**
    * Delete a marketplace category with dependency checks against all marketplace products.
+   * Enforces anti-resurrection tombstone so deleted categories never reappear.
    */
   async deleteCategoryByManagement(
     categoryId: string
@@ -1121,7 +1107,7 @@ export class CommerceService {
     const catData =
       catDoc && catDoc.exists()
         ? (catDoc.data() as Category)
-        : INITIAL_CATEGORIES.find((c) => c.categoryId === categoryId);
+        : null;
 
     const slug = catData?.slug || categoryId;
     const name = catData?.name || categoryId;
@@ -1141,6 +1127,15 @@ export class CommerceService {
         message: `Cannot delete category "${name}" because it is currently assigned to ${boundProducts.length} product(s) in the catalog. Please reassign or archive those products first.`,
       };
     }
+
+    // Persist permanent anti-resurrection tombstone
+    await antiResurrectionService.recordTombstone(
+      'category',
+      categoryId,
+      'admin',
+      'DELETED',
+      `Category ${name} deleted by administrator`
+    );
 
     try {
       await deleteDoc(doc(db, 'categories', categoryId)).catch(() => null);
