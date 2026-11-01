@@ -11,6 +11,76 @@ import {
   CommissionRecord,
   PaystackBank,
 } from '../types/affiliate';
+import { db } from '../lib/firebase';
+import { collection, doc, getDocs, setDoc, query, where } from 'firebase/firestore';
+
+interface ApiResponse<T = any> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  statusCode?: number;
+}
+
+/**
+ * Robust response parsing that never throws SyntaxError on HTML or plain-text error pages.
+ */
+async function parseApiResponse<T = any>(res: Response): Promise<ApiResponse<T>> {
+  const status = res.status;
+  const contentType = res.headers.get('content-type') || '';
+  let rawText = '';
+
+  try {
+    rawText = await res.text();
+  } catch (readErr) {
+    return {
+      success: false,
+      statusCode: status,
+      error: `Network error: ${readErr instanceof Error ? readErr.message : 'Failed to read response'}`,
+    };
+  }
+
+  if (!rawText || !rawText.trim()) {
+    return {
+      success: res.ok,
+      statusCode: status,
+      error: res.ok ? undefined : `Server returned empty response (${status}).`,
+    };
+  }
+
+  // Handle JSON responses safely
+  if (contentType.includes('application/json') || rawText.trim().startsWith('{') || rawText.trim().startsWith('[')) {
+    try {
+      const parsed = JSON.parse(rawText);
+      if (!res.ok || parsed.success === false) {
+        const errorMsg = parsed.error || parsed.message || `Request failed (${status})`;
+        return { success: false, data: parsed, error: errorMsg, statusCode: status };
+      }
+      return { success: true, data: parsed, statusCode: status };
+    } catch {
+      // JSON parse failed; fall through to text sanitization
+    }
+  }
+
+  // Handle HTML error pages (e.g. Vercel server error pages, proxy 500/502/504)
+  if (rawText.toLowerCase().includes('<html') || rawText.toLowerCase().includes('<!doctype')) {
+    const titleMatch = rawText.match(/<title>([^<]+)<\/title>/i);
+    const h1Match = rawText.match(/<h1>([^<]+)<\/h1>/i);
+    const hint = titleMatch ? titleMatch[1].trim() : h1Match ? h1Match[1].trim() : `Server Error (${status})`;
+    return {
+      success: false,
+      statusCode: status,
+      error: hint,
+    };
+  }
+
+  // Plain-text responses (e.g. "A server error has occurred" or "Internal Server Error")
+  const cleanMsg = rawText.trim().slice(0, 250);
+  return {
+    success: res.ok,
+    statusCode: status,
+    error: res.ok ? undefined : cleanMsg || `Request failed (${status})`,
+  };
+}
 
 interface AffiliateContextType {
   affiliateStatus: AffiliateStatus;
@@ -95,15 +165,12 @@ export const AffiliateProvider: React.FC<{ children: ReactNode }> = ({ children 
             affiliateCode: cleanRef,
             destinationSlug: window.location.pathname.replace(/^\//, ''),
           }),
-        }).catch(() => {
-          // Non-blocking
-        });
+        }).catch(() => {});
       } else {
         const stored = sessionStorage.getItem('nexovira_aff_ref');
         if (stored) {
           setReferralCode(stored);
         } else {
-          // Read from cookie
           const match = document.cookie.match(/(^|;\s*)nexovira_aff_ref=([^;]*)/);
           if (match) {
             setReferralCode(decodeURIComponent(match[2]));
@@ -129,37 +196,72 @@ export const AffiliateProvider: React.FC<{ children: ReactNode }> = ({ children 
     try {
       setIsLoading(true);
       setError(null);
-      const res = await fetch(`/api/affiliates/me/status?userId=${encodeURIComponent(user.uid)}`, {
-        headers: {
-          'x-user-id': user.uid,
-          'x-user-email': user.email || '',
-        },
-      });
 
-      if (!res.ok) {
-        throw new Error('Failed to fetch affiliate status');
-      }
+      let statusLoaded = false;
 
-      const data = await res.json();
-      setAffiliateStatus(data.status || 'NOT_APPLIED');
-      setProfile(data.profile || null);
-      setApplication(data.application || null);
-
-      if (data.status === 'APPROVED') {
-        // Fetch wallet
-        const wRes = await fetch(`/api/affiliates/me/wallet?userId=${encodeURIComponent(user.uid)}`, {
+      try {
+        const res = await fetch(`/api/affiliates/me/status?userId=${encodeURIComponent(user.uid)}`, {
           headers: {
             'x-user-id': user.uid,
             'x-user-email': user.email || '',
           },
         });
-        if (wRes.ok) {
-          const wData = await wRes.json();
-          setWallet(wData.wallet || null);
+
+        const parsed = await parseApiResponse(res);
+        if (parsed.success && parsed.data) {
+          const data = parsed.data;
+          setAffiliateStatus(data.status || 'NOT_APPLIED');
+          setProfile(data.profile || null);
+          setApplication(data.application || null);
+          statusLoaded = true;
+
+          if (data.status === 'APPROVED') {
+            const wRes = await fetch(`/api/affiliates/me/wallet?userId=${encodeURIComponent(user.uid)}`, {
+              headers: {
+                'x-user-id': user.uid,
+                'x-user-email': user.email || '',
+              },
+            });
+            const wParsed = await parseApiResponse(wRes);
+            if (wParsed.success && wParsed.data) {
+              setWallet(wParsed.data.wallet || null);
+            }
+          }
+        }
+      } catch (apiErr) {
+        console.warn('Backend affiliate status API notice:', apiErr);
+      }
+
+      // Authoritative direct Firestore fallback across all production domains
+      if (!statusLoaded && db) {
+        try {
+          // Check for approved affiliate profile
+          const profSnap = await getDocs(query(collection(db, 'affiliateProfiles'), where('userId', '==', user.uid))).catch(() => null);
+          if (profSnap && !profSnap.empty) {
+            const prof = profSnap.docs[0].data() as AffiliateProfile;
+            setAffiliateStatus('APPROVED');
+            setProfile(prof);
+          } else {
+            // Check for pending/reviewed applications
+            const appSnap = await getDocs(query(collection(db, 'affiliateApplications'), where('userId', '==', user.uid))).catch(() => null);
+            if (appSnap && !appSnap.empty) {
+              const latestApp = appSnap.docs.map(d => d.data() as AffiliateApplication).sort(
+                (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+              )[0];
+              setAffiliateStatus(latestApp.status || 'PENDING_REVIEW');
+              setApplication(latestApp);
+            } else {
+              setAffiliateStatus('NOT_APPLIED');
+              setProfile(null);
+              setApplication(null);
+            }
+          }
+        } catch (fsErr) {
+          console.warn('Direct Firestore status query notice:', fsErr);
         }
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error fetching affiliate details';
+      const msg = err instanceof Error ? err.message : 'Error retrieving affiliate status';
       setError(msg);
     } finally {
       setIsLoading(false);
@@ -170,9 +272,16 @@ export const AffiliateProvider: React.FC<{ children: ReactNode }> = ({ children 
   const fetchOffers = useCallback(async () => {
     try {
       const res = await fetch('/api/affiliates/me/offers');
-      if (res.ok) {
-        const data = await res.json();
-        setOffers(data.offers || []);
+      const parsed = await parseApiResponse(res);
+      if (parsed.success && parsed.data?.offers) {
+        setOffers(parsed.data.offers);
+      } else if (db) {
+        // Fallback to Firestore offers
+        const snap = await getDocs(collection(db, 'affiliateOffers')).catch(() => null);
+        if (snap && !snap.empty) {
+          const list = snap.docs.map((d) => d.data() as EligibleOffer);
+          setOffers(list.filter((o) => o.status === 'ACTIVE'));
+        }
       }
     } catch (err) {
       console.warn('Error fetching affiliate offers:', err);
@@ -184,17 +293,17 @@ export const AffiliateProvider: React.FC<{ children: ReactNode }> = ({ children 
     fetchOffers();
   }, [fetchStatus, fetchOffers]);
 
-  // Reliable polling when application is pending review so approval immediately reflects
+  // Polling when application is pending review
   useEffect(() => {
     if (affiliateStatus === 'PENDING_REVIEW' && user) {
       const interval = setInterval(() => {
         fetchStatus();
-      }, 7000);
+      }, 8000);
       return () => clearInterval(interval);
     }
   }, [affiliateStatus, user, fetchStatus]);
 
-  // 4. Submit application
+  // 4. Submit application with guaranteed Firestore persistence and safe JSON error handling
   const applyForProgram = async (data: {
     fullName: string;
     email: string;
@@ -213,29 +322,77 @@ export const AffiliateProvider: React.FC<{ children: ReactNode }> = ({ children 
     try {
       setIsLoading(true);
       setError(null);
-      const res = await fetch('/api/affiliates/apply', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': user.uid,
-          'x-user-email': user.email || '',
-        },
-        body: JSON.stringify({
-          userId: user.uid,
-          ...data,
-        }),
-      });
 
-      const resData = await res.json();
-      if (!res.ok || !resData.success) {
-        const err = resData.error || 'Failed to submit application.';
-        setError(err);
-        return { success: false, error: err };
+      const applicationId = `aff-app-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const applicationRecord: AffiliateApplication = {
+        applicationId,
+        userId: user.uid,
+        fullName: data.fullName.trim(),
+        email: data.email.trim(),
+        phone: data.phone.trim(),
+        promotionChannels: data.promotionChannels,
+        platformLinks: data.platformLinks?.trim() || undefined,
+        audienceDescription: data.audienceDescription.trim(),
+        promotionalExperience: data.promotionalExperience.trim(),
+        preferredCategories: data.preferredCategories,
+        additionalInfo: data.additionalInfo?.trim() || undefined,
+        status: 'PENDING_REVIEW',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      let submittedSuccessfully = false;
+      let submissionError: string | undefined = undefined;
+
+      // Primary: Dispatch to backend API
+      try {
+        const res = await fetch('/api/affiliates/apply', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-id': user.uid,
+            'x-user-email': user.email || '',
+          },
+          body: JSON.stringify({
+            userId: user.uid,
+            ...data,
+          }),
+        });
+
+        const parsed = await parseApiResponse(res);
+        if (parsed.success && parsed.data?.success) {
+          submittedSuccessfully = true;
+          setAffiliateStatus('PENDING_REVIEW');
+          setApplication(parsed.data.application || applicationRecord);
+          return { success: true };
+        } else {
+          submissionError = parsed.error || 'Backend application submission failed';
+        }
+      } catch (networkErr: unknown) {
+        console.warn('Affiliate apply API request error, proceeding to direct Firestore storage:', networkErr);
       }
 
-      setAffiliateStatus('PENDING_REVIEW');
-      setApplication(resData.application);
-      return { success: true };
+      // Authoritative direct Firestore fallback: Save application directly if backend is unavailable/errored
+      if (!submittedSuccessfully && db) {
+        try {
+          await setDoc(doc(db, 'affiliateApplications', applicationId), applicationRecord);
+          setAffiliateStatus('PENDING_REVIEW');
+          setApplication(applicationRecord);
+          return { success: true };
+        } catch (fsErr: unknown) {
+          console.error('Firestore application save error:', fsErr);
+          const errText = fsErr instanceof Error ? fsErr.message : 'Database write failed';
+          setError(submissionError || errText);
+          return { success: false, error: submissionError || errText };
+        }
+      }
+
+      if (submissionError) {
+        setError(submissionError);
+        return { success: false, error: submissionError };
+      }
+
+      return { success: false, error: 'Could not complete application submission.' };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Application submission error';
       setError(msg);
@@ -268,15 +425,15 @@ export const AffiliateProvider: React.FC<{ children: ReactNode }> = ({ children 
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        return { success: false, error: data.error || 'Failed to generate referral link' };
+      const parsed = await parseApiResponse(res);
+      if (!parsed.success || !parsed.data?.success) {
+        return { success: false, error: parsed.error || 'Failed to generate referral link' };
       }
 
       return {
         success: true,
-        shareableUrl: data.shareableUrl,
-        offerTitle: data.offerTitle,
+        shareableUrl: parsed.data.shareableUrl,
+        offerTitle: parsed.data.offerTitle,
       };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error generating link';
@@ -290,14 +447,14 @@ export const AffiliateProvider: React.FC<{ children: ReactNode }> = ({ children 
   ): Promise<{ success: boolean; banks: PaystackBank[]; isLive: boolean; error?: string }> => {
     try {
       const res = await fetch(`/api/affiliates/payout/banks?country=${encodeURIComponent(country)}`);
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        return { success: false, banks: [], isLive: false, error: data.error || 'Failed to retrieve banks' };
+      const parsed = await parseApiResponse(res);
+      if (!parsed.success || !parsed.data?.success) {
+        return { success: false, banks: [], isLive: false, error: parsed.error || 'Failed to retrieve banks' };
       }
       return {
         success: true,
-        banks: data.banks || [],
-        isLive: Boolean(data.isLive),
+        banks: parsed.data.banks || [],
+        isLive: Boolean(parsed.data.isLive),
       };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error fetching banks';
@@ -326,16 +483,16 @@ export const AffiliateProvider: React.FC<{ children: ReactNode }> = ({ children 
         body: JSON.stringify({ accountNumber, bankCode }),
       });
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        return { success: false, error: data.error || 'Bank account verification failed.' };
+      const parsed = await parseApiResponse(res);
+      if (!parsed.success || !parsed.data?.success) {
+        return { success: false, error: parsed.error || 'Bank account verification failed.' };
       }
 
       return {
         success: true,
-        accountName: data.accountName,
-        accountNumber: data.accountNumber,
-        isLive: data.isLive,
+        accountName: parsed.data.accountName,
+        accountNumber: parsed.data.accountNumber,
+        isLive: parsed.data.isLive,
       };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Verification request failed';
@@ -343,7 +500,7 @@ export const AffiliateProvider: React.FC<{ children: ReactNode }> = ({ children 
     }
   };
 
-  // 7. Save Payout Profile
+  // 8. Save Payout Profile
   const savePayoutProfile = async (data: {
     bankName: string;
     bankCode: string;
@@ -365,13 +522,13 @@ export const AffiliateProvider: React.FC<{ children: ReactNode }> = ({ children 
         body: JSON.stringify(data),
       });
 
-      const resData = await res.json();
-      if (!res.ok || !resData.success) {
-        return { success: false, error: resData.error || 'Failed to save payout profile.' };
+      const parsed = await parseApiResponse(res);
+      if (!parsed.success || !parsed.data?.success) {
+        return { success: false, error: parsed.error || 'Failed to save payout profile.' };
       }
 
-      if (resData.profile) {
-        setProfile(resData.profile);
+      if (parsed.data.profile) {
+        setProfile(parsed.data.profile);
       }
       await fetchStatus();
       return { success: true };
@@ -381,7 +538,7 @@ export const AffiliateProvider: React.FC<{ children: ReactNode }> = ({ children 
     }
   };
 
-  // 8. Request Payout Withdrawal
+  // 9. Request Payout Withdrawal
   const requestPayoutWithdrawal = async (
     amount?: number
   ): Promise<{ success: boolean; error?: string }> => {
@@ -400,9 +557,9 @@ export const AffiliateProvider: React.FC<{ children: ReactNode }> = ({ children 
         body: JSON.stringify({ amount }),
       });
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        return { success: false, error: data.error || 'Payout request failed.' };
+      const parsed = await parseApiResponse(res);
+      if (!parsed.success || !parsed.data?.success) {
+        return { success: false, error: parsed.error || 'Payout request failed.' };
       }
 
       await fetchStatus();

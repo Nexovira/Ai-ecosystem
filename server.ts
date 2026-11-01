@@ -1434,7 +1434,7 @@ Respond with a strictly valid JSON object matching this schema:
   /**
    * GET /api/affiliates/me/status
    */
-  app.get('/api/affiliates/me/status', async (req: Request, res: Response) => {
+  app.get(['/api/affiliates/me/status', '/affiliates/me/status'], async (req: Request, res: Response) => {
     try {
       const userId = (req.headers['x-user-id'] as string) || (req.query.userId as string);
       if (!userId) {
@@ -1452,7 +1452,7 @@ Respond with a strictly valid JSON object matching this schema:
   /**
    * POST /api/affiliates/apply
    */
-  app.post('/api/affiliates/apply', async (req: Request, res: Response) => {
+  app.post(['/api/affiliates/apply', '/affiliates/apply'], async (req: Request, res: Response) => {
     try {
       const userId = (req.headers['x-user-id'] as string) || req.body.userId;
       if (!userId) {
@@ -1505,7 +1505,7 @@ Respond with a strictly valid JSON object matching this schema:
   /**
    * GET /api/affiliates/me/dashboard
    */
-  app.get('/api/affiliates/me/dashboard', async (req: Request, res: Response) => {
+  app.get(['/api/affiliates/me/dashboard', '/affiliates/me/dashboard'], async (req: Request, res: Response) => {
     try {
       const userId = (req.headers['x-user-id'] as string) || (req.query.userId as string);
       if (!userId) {
@@ -1546,7 +1546,7 @@ Respond with a strictly valid JSON object matching this schema:
   /**
    * GET /api/affiliates/me/offers
    */
-  app.get('/api/affiliates/me/offers', async (req: Request, res: Response) => {
+  app.get(['/api/affiliates/me/offers', '/affiliates/me/offers'], async (req: Request, res: Response) => {
     try {
       const offers = affiliateService.getOffers(true);
       return res.json({ success: true, offers });
@@ -5563,9 +5563,15 @@ Respond with a strictly valid JSON object matching this schema:
   // Vite Middleware / Static Frontend Mounting
   // ==========================================
 
-  const isProd = process.env.NODE_ENV === 'production';
+  const isServerless = process.env.VERCEL === '1' || Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME);
+  const isProd = process.env.NODE_ENV === 'production' || isServerless;
 
-  if (!isProd) {
+  // Global unhandled API route fallback: ALWAYS return JSON
+  app.all(['/api', '/api/*', '/affiliates/*', '/checkout/*', '/management/*'], (_req: Request, res: Response) => {
+    res.status(404).json({ success: false, error: 'API endpoint not found', status: 404 });
+  });
+
+  if (!isProd && !isServerless) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: {
@@ -5575,18 +5581,22 @@ Respond with a strictly valid JSON object matching this schema:
       appType: 'spa',
     });
     app.use(vite.middlewares);
-  } else {
-    // Prevent unhandled API routes from returning index.html
-    app.all('/api/*', (_req: Request, res: Response) => {
-      res.status(404).json({ success: false, error: 'API endpoint not found', status: 404 });
-    });
-
+  } else if (!isServerless) {
     const distPath = path.resolve(__dirname, 'dist');
     app.use(express.static(distPath));
     app.get('*', (_req: Request, res: Response) => {
       res.sendFile(path.resolve(distPath, 'index.html'));
     });
   }
+
+  // Global Express Error Handler: guarantee every error returns structured JSON
+  app.use((err: unknown, req: Request, res: Response, _next: express.NextFunction) => {
+    console.error(`Unhandled API Error on [${req.method} ${req.url}]:`, err);
+    if (!res.headersSent) {
+      const msg = err instanceof Error ? err.message : 'Internal Server Error';
+      res.status(500).json({ success: false, error: msg, code: 'SERVER_ERROR' });
+    }
+  });
 
   return app;
 }

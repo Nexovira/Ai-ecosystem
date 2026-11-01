@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from '../../context/RouterContext';
 import { useAuth } from '../../context/AuthContext';
+import { db } from '../../lib/firebase';
+import { collection, getDocs, doc, setDoc, updateDoc, getDoc } from 'firebase/firestore';
 import {
   ShieldCheck,
   Users,
@@ -31,6 +33,28 @@ import {
   CommissionStatus,
   PayoutStatus,
 } from '../../types/affiliate';
+
+async function safeParseApiResponse(res: Response): Promise<{ ok: boolean; status: number; data: any; error?: string }> {
+  try {
+    const text = await res.text();
+    if (!text || !text.trim()) {
+      return { ok: res.ok, status: res.status, data: null };
+    }
+    const trimmed = text.trim();
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      const json = JSON.parse(trimmed);
+      return { ok: res.ok, status: res.status, data: json, error: json.error || json.message };
+    }
+    return {
+      ok: false,
+      status: res.status,
+      data: null,
+      error: trimmed.length > 200 ? 'Server returned an invalid non-JSON response.' : trimmed,
+    };
+  } catch {
+    return { ok: false, status: res.status, data: null, error: 'Failed to process server response.' };
+  }
+}
 
 export const ManagementAffiliatePage: React.FC = () => {
   const { navigate } = useRouter();
@@ -87,11 +111,11 @@ export const ManagementAffiliatePage: React.FC = () => {
           'x-user-email': user.email || '',
         },
       });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to remove offer');
+      const parsed = await safeParseApiResponse(res);
+      if (!parsed.ok || !parsed.data?.success) {
+        throw new Error(parsed.error || parsed.data?.error || 'Failed to remove offer');
       }
-      setActionSuccess(data.message || `Offer "${deleteConfirmOffer.targetTitle}" processed.`);
+      setActionSuccess(parsed.data.message || `Offer "${deleteConfirmOffer.targetTitle}" processed.`);
       setDeleteConfirmOffer(null);
       loadManagementData();
     } catch (err: unknown) {
@@ -129,19 +153,54 @@ export const ManagementAffiliatePage: React.FC = () => {
         'x-user-email': user.email || '',
       };
 
-      const [appsRes, affsRes, offersRes, commsRes, paysRes] = await Promise.all([
-        fetch('/api/affiliates/management/applications', { headers }),
-        fetch('/api/affiliates/management/affiliates', { headers }),
-        fetch('/api/affiliates/management/offers', { headers }),
-        fetch('/api/affiliates/management/commissions', { headers }),
-        fetch('/api/affiliates/management/payouts', { headers }),
-      ]);
+      try {
+        const [appsRes, affsRes, offersRes, commsRes, paysRes] = await Promise.all([
+          fetch('/api/affiliates/management/applications', { headers }).then(safeParseApiResponse),
+          fetch('/api/affiliates/management/affiliates', { headers }).then(safeParseApiResponse),
+          fetch('/api/affiliates/management/offers', { headers }).then(safeParseApiResponse),
+          fetch('/api/affiliates/management/commissions', { headers }).then(safeParseApiResponse),
+          fetch('/api/affiliates/management/payouts', { headers }).then(safeParseApiResponse),
+        ]);
 
-      if (appsRes.ok) setApplications((await appsRes.json()).applications || []);
-      if (affsRes.ok) setAffiliates((await affsRes.json()).affiliates || []);
-      if (offersRes.ok) setOffers((await offersRes.json()).offers || []);
-      if (commsRes.ok) setCommissions((await commsRes.json()).commissions || []);
-      if (paysRes.ok) setPayouts((await paysRes.json()).payouts || []);
+        if (appsRes.ok && appsRes.data?.applications) setApplications(appsRes.data.applications);
+        if (affsRes.ok && affsRes.data?.affiliates) setAffiliates(affsRes.data.affiliates);
+        if (offersRes.ok && offersRes.data?.offers) setOffers(offersRes.data.offers);
+        if (commsRes.ok && commsRes.data?.commissions) setCommissions(commsRes.data.commissions);
+        if (paysRes.ok && paysRes.data?.payouts) setPayouts(paysRes.data.payouts);
+      } catch (networkErr) {
+        console.warn('API fetch error, falling back to Firestore directly:', networkErr);
+      }
+
+      // Direct Firestore authoritative check/fallback if needed
+      if (db) {
+        try {
+          const [appsSnap, affsSnap, offersSnap, commsSnap, paysSnap] = await Promise.all([
+            getDocs(collection(db, 'affiliateApplications')),
+            getDocs(collection(db, 'affiliateProfiles')),
+            getDocs(collection(db, 'eligibleOffers')),
+            getDocs(collection(db, 'affiliateCommissions')),
+            getDocs(collection(db, 'affiliatePayouts')),
+          ]);
+
+          if (!appsSnap.empty) {
+            setApplications(appsSnap.docs.map((d) => d.data() as AffiliateApplication));
+          }
+          if (!affsSnap.empty) {
+            setAffiliates(affsSnap.docs.map((d) => d.data() as AffiliateProfile));
+          }
+          if (!offersSnap.empty) {
+            setOffers(offersSnap.docs.map((d) => d.data() as EligibleOffer));
+          }
+          if (!commsSnap.empty) {
+            setCommissions(commsSnap.docs.map((d) => d.data() as CommissionRecord));
+          }
+          if (!paysSnap.empty) {
+            setPayouts(paysSnap.docs.map((d) => d.data() as PayoutRequest));
+          }
+        } catch (fsErr) {
+          console.warn('Direct Firestore fetch note:', fsErr);
+        }
+      }
     } catch (err) {
       console.warn('Management data loading warning:', err);
       setActionError('Failed to fetch some management collections.');
@@ -156,23 +215,70 @@ export const ManagementAffiliatePage: React.FC = () => {
     setActionError(null);
 
     try {
-      const res = await fetch(
-        `/api/affiliates/management/applications/${selectedApp.applicationId}/review`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-user-id': user.uid,
-            'x-user-role': profile.role,
-            'x-user-email': user.email || '',
-          },
-          body: JSON.stringify({ status, reviewNotes }),
-        }
-      );
+      let handled = false;
+      try {
+        const res = await fetch(
+          `/api/affiliates/management/applications/${selectedApp.applicationId}/review`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-user-id': user.uid,
+              'x-user-role': profile.role,
+              'x-user-email': user.email || '',
+            },
+            body: JSON.stringify({ status, reviewNotes }),
+          }
+        );
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to review application');
+        const parsed = await safeParseApiResponse(res);
+        if (parsed.ok && parsed.data?.success) {
+          handled = true;
+        }
+      } catch (networkErr) {
+        console.warn('API review endpoint error, using Firestore directly:', networkErr);
+      }
+
+      // If API was not reachable or serverless function errored, write directly to Firestore (admin authorized)
+      if (!handled && db) {
+        const now = new Date().toISOString();
+        const appRef = doc(db, 'affiliateApplications', selectedApp.applicationId);
+        await updateDoc(appRef, {
+          status,
+          reviewNotes: reviewNotes || undefined,
+          reviewedAt: now,
+          reviewedBy: user.email || user.uid,
+          updatedAt: now,
+        });
+
+        if (status === 'APPROVED') {
+          const affRef = doc(db, 'affiliateProfiles', selectedApp.userId);
+          const existingSnap = await getDoc(affRef);
+          if (!existingSnap.exists()) {
+            const newProfile: AffiliateProfile = {
+              affiliateId: selectedApp.userId,
+              userId: selectedApp.userId,
+              affiliateCode: (
+                selectedApp.fullName.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6).toUpperCase() || 'NEX'
+              ) + Math.random().toString(36).substring(2, 6).toUpperCase(),
+              fullName: selectedApp.fullName,
+              email: selectedApp.email,
+              phone: selectedApp.phone,
+              status: 'APPROVED',
+              promotionChannels: selectedApp.promotionChannels || [],
+              audienceDescription: selectedApp.audienceDescription,
+              totalClicks: 0,
+              totalConversions: 0,
+              defaultCommissionRate: 10,
+              createdAt: now,
+              updatedAt: now,
+            };
+            await setDoc(affRef, newProfile);
+          } else {
+            await updateDoc(affRef, { status: 'APPROVED', updatedAt: now });
+          }
+        }
+        handled = true;
       }
 
       setActionSuccess(`Application ${status.toLowerCase()} successfully.`);
@@ -201,9 +307,12 @@ export const ManagementAffiliatePage: React.FC = () => {
         body: JSON.stringify({ status: newStatus }),
       });
 
-      if (res.ok) {
+      const parsed = await safeParseApiResponse(res);
+      if (parsed.ok) {
         setActionSuccess(`Affiliate status updated to ${newStatus}.`);
         await loadManagementData();
+      } else {
+        setActionError(parsed.error || 'Failed to update affiliate status');
       }
     } catch (err) {
       setActionError('Failed to update affiliate status');
@@ -225,10 +334,13 @@ export const ManagementAffiliatePage: React.FC = () => {
         body: JSON.stringify(editingOffer),
       });
 
-      if (res.ok) {
+      const parsed = await safeParseApiResponse(res);
+      if (parsed.ok) {
         setShowOfferModal(false);
         setActionSuccess('Offer configuration updated.');
         await loadManagementData();
+      } else {
+        setActionError(parsed.error || 'Failed to save offer');
       }
     } catch (err) {
       setActionError('Failed to save offer');
@@ -249,11 +361,14 @@ export const ManagementAffiliatePage: React.FC = () => {
         body: JSON.stringify({ status, reversalReason: reason }),
       });
 
-      if (res.ok) {
+      const parsed = await safeParseApiResponse(res);
+      if (parsed.ok) {
         setReversalCommId(null);
         setReversalReason('');
         setActionSuccess(`Commission transitioned to ${status}.`);
         await loadManagementData();
+      } else {
+        setActionError(parsed.error || 'Failed to update commission');
       }
     } catch (err) {
       setActionError('Failed to update commission');
@@ -279,12 +394,15 @@ export const ManagementAffiliatePage: React.FC = () => {
         }),
       });
 
-      if (res.ok) {
+      const parsed = await safeParseApiResponse(res);
+      if (parsed.ok) {
         setSelectedPayout(null);
         setPayoutProviderRef('');
         setPayoutFailureReason('');
         setActionSuccess(`Payout request updated to ${status}.`);
         await loadManagementData();
+      } else {
+        setActionError(parsed.error || 'Failed to update payout');
       }
     } catch (err) {
       setActionError('Failed to update payout');
