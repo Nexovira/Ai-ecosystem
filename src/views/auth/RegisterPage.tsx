@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Eye, EyeOff, Lock, Mail, User as UserIcon, Phone, ArrowRight, CheckCircle2, AlertCircle, Shield } from 'lucide-react';
+import { Eye, EyeOff, Lock, Mail, User as UserIcon, Phone, ArrowRight, CheckCircle2, AlertCircle, Shield, Users, Briefcase, TrendingUp, Clock } from 'lucide-react';
 import { Container } from '../../components/common/Container';
 import { Button } from '../../components/common/Button';
 import { Logo } from '../../components/common/Logo';
@@ -17,8 +17,19 @@ export const RegisterPage: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [selectedRole, setSelectedRole] = useState<'CUSTOMER' | 'AFFILIATE' | 'EXPERT'>('CUSTOMER');
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [acceptPrivacy, setAcceptPrivacy] = useState(false);
+
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const roleParam = params.get('role')?.toUpperCase();
+      if (roleParam && ['CUSTOMER', 'AFFILIATE', 'EXPERT'].includes(roleParam)) {
+        setSelectedRole(roleParam as 'CUSTOMER' | 'AFFILIATE' | 'EXPERT');
+      }
+    }
+  }, []);
 
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -93,7 +104,8 @@ export const RegisterPage: React.FC = () => {
       targetEmail,
       password,
       fullName.trim(),
-      phoneNumber.trim() || undefined
+      phoneNumber.trim() || undefined,
+      selectedRole
     );
     setLoading(false);
 
@@ -325,6 +337,92 @@ export const RegisterPage: React.FC = () => {
             )}
 
             <form onSubmit={handleSubmit} className="space-y-4">
+              {/* Interactive Role Selection */}
+              <div className="space-y-2 pb-1">
+                <label className="block text-xs font-semibold text-[#14283F]">
+                  Select Your Account Role *
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  {/* Customer Option */}
+                  <div
+                    onClick={() => setSelectedRole('CUSTOMER')}
+                    className={`p-3 rounded-2xl border cursor-pointer transition-all ${
+                      selectedRole === 'CUSTOMER'
+                        ? 'bg-[#0169FA]/5 border-[#0169FA] ring-1 ring-[#0169FA]'
+                        : 'bg-[#F7F8FA] border-[#E8EDF2] hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="w-6 h-6 rounded-lg bg-[#08B3F8]/15 text-[#0169FA] flex items-center justify-center">
+                        <Users className="w-3.5 h-3.5" />
+                      </div>
+                      <span className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
+                        selectedRole === 'CUSTOMER' ? 'border-[#0169FA] bg-[#0169FA]' : 'border-slate-300'
+                      }`}>
+                        {selectedRole === 'CUSTOMER' && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                      </span>
+                    </div>
+                    <div className="text-xs font-bold text-[#14283F]">Customer</div>
+                    <p className="text-[10px] text-[#6B7280] leading-snug mt-0.5">Shop, hire talent, &amp; study</p>
+                  </div>
+
+                  {/* Affiliate Option */}
+                  <div
+                    onClick={() => setSelectedRole('AFFILIATE')}
+                    className={`p-3 rounded-2xl border cursor-pointer transition-all ${
+                      selectedRole === 'AFFILIATE'
+                        ? 'bg-[#0169FA]/5 border-[#0169FA] ring-1 ring-[#0169FA]'
+                        : 'bg-[#F7F8FA] border-[#E8EDF2] hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="w-6 h-6 rounded-lg bg-[#028BFA]/15 text-[#0169FA] flex items-center justify-center">
+                        <TrendingUp className="w-3.5 h-3.5" />
+                      </div>
+                      <span className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
+                        selectedRole === 'AFFILIATE' ? 'border-[#0169FA] bg-[#0169FA]' : 'border-slate-300'
+                      }`}>
+                        {selectedRole === 'AFFILIATE' && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                      </span>
+                    </div>
+                    <div className="text-xs font-bold text-[#14283F]">Affiliate</div>
+                    <p className="text-[10px] text-[#6B7280] leading-snug mt-0.5">Promote &amp; earn commissions</p>
+                  </div>
+
+                  {/* Expert Option */}
+                  <div
+                    onClick={() => setSelectedRole('EXPERT')}
+                    className={`p-3 rounded-2xl border cursor-pointer transition-all ${
+                      selectedRole === 'EXPERT'
+                        ? 'bg-[#0169FA]/5 border-[#0169FA] ring-1 ring-[#0169FA]'
+                        : 'bg-[#F7F8FA] border-[#E8EDF2] hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="w-6 h-6 rounded-lg bg-[#0148F2]/15 text-[#0148F2] flex items-center justify-center">
+                        <Briefcase className="w-3.5 h-3.5" />
+                      </div>
+                      <span className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
+                        selectedRole === 'EXPERT' ? 'border-[#0169FA] bg-[#0169FA]' : 'border-slate-300'
+                      }`}>
+                        {selectedRole === 'EXPERT' && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                      </span>
+                    </div>
+                    <div className="text-xs font-bold text-[#14283F]">Specialist</div>
+                    <p className="text-[10px] text-[#6B7280] leading-snug mt-0.5">Deliver tech &amp; engineering</p>
+                  </div>
+                </div>
+
+                {selectedRole !== 'CUSTOMER' && (
+                  <div className="p-2.5 rounded-xl bg-[#0169FA]/5 border border-[#0169FA]/20 text-[11px] text-[#0169FA] flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 shrink-0" />
+                    <span>
+                      {selectedRole === 'AFFILIATE' ? 'Affiliate partner accounts' : 'Specialist service accounts'} are verified by management following email activation.
+                    </span>
+                  </div>
+                )}
+              </div>
+
               {/* Full Name */}
               <div>
                 <label className="block text-xs font-semibold text-[#14283F] mb-1.5">

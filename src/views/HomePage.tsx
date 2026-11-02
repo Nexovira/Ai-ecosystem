@@ -1,5 +1,6 @@
 import React from 'react';
 import { Hero } from '../components/home/Hero';
+import { RoleSelectionSection } from '../components/home/RoleSelectionSection';
 import { DiscoverSection } from '../components/home/DiscoverSection';
 import { HowItWorksSection } from '../components/home/HowItWorksSection';
 import { FeaturedMarketplaceSection } from '../components/home/FeaturedMarketplaceSection';
@@ -35,7 +36,10 @@ export const HomePage: React.FC<HomePageProps> = ({ onOpenGetStarted }) => {
         onGetStarted={handleGetStarted}
       />
 
-      {/* SECTION C — DISCOVER NEXOVIRA */}
+      {/* SECTION C — ROLE SELECTION PATHWAYS */}
+      <RoleSelectionSection />
+
+      {/* SECTION D — DISCOVER NEXOVIRA */}
       <DiscoverSection />
 
       {/* SECTION D — HOW NEXOVIRA WORKS */}

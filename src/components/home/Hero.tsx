@@ -93,12 +93,10 @@ export const Hero: React.FC<HeroProps> = ({ onExplore, onGetStarted }) => {
                 {/* Header inside visual card */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl overflow-hidden bg-black flex items-center justify-center p-0.5 shadow-sm">
-                      <img
-                        src="/assets/aistudio/IMG-20261029-WA0008_84e40fd0.jpg"
-                        alt="Nexovira"
-                        className="w-full h-full object-cover rounded-xl"
-                      />
+                    <div className="w-12 h-12 rounded-2xl overflow-hidden bg-gradient-to-tr from-[#08B3F8] via-[#0169FA] to-[#032FC8] flex items-center justify-center p-0.5 shadow-sm">
+                      <div className="w-full h-full rounded-[14px] bg-[#14283F] flex items-center justify-center">
+                        <span className="font-display font-black text-sm tracking-tighter text-[#08B3F8]">NX</span>
+                      </div>
                     </div>
                     <div>
                       <h3 className="font-display font-bold text-base text-[#14283F] leading-tight">Nexovira Ecosystem</h3>

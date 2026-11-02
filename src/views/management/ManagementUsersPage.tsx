@@ -25,13 +25,16 @@ import {
   MailCheck,
 } from 'lucide-react';
 import { ManagementUserItem } from '../../types/management';
-import { AccountStatus, UserRole } from '../../types/auth';
+import { AccountStatus, UserRole, RoleApplication } from '../../types/auth';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 
 export const ManagementUsersPage: React.FC = () => {
   const { user, profile } = useAuth();
+  const [activeTab, setActiveTab] = useState<'USERS' | 'APPLICATIONS'>('USERS');
   const [users, setUsers] = useState<ManagementUserItem[]>([]);
+  const [roleApplications, setRoleApplications] = useState<RoleApplication[]>([]);
+  const [loadingApplications, setLoadingApplications] = useState(false);
   const [total, setTotal] = useState(0);
   const [stats, setStats] = useState({
     total: 0,
@@ -63,6 +66,12 @@ export const ManagementUsersPage: React.FC = () => {
   const [newRole, setNewRole] = useState<UserRole>('CUSTOMER');
   const [roleReason, setRoleReason] = useState('');
   const [submittingRole, setSubmittingRole] = useState(false);
+
+  // Review Application Modal State
+  const [reviewingApp, setReviewingApp] = useState<RoleApplication | null>(null);
+  const [reviewAction, setReviewAction] = useState<'APPROVE' | 'REJECT'>('APPROVE');
+  const [reviewNotes, setReviewNotes] = useState('');
+  const [submittingReview, setSubmittingReview] = useState(false);
 
   const [actionFeedback, setActionFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -218,9 +227,112 @@ export const ManagementUsersPage: React.FC = () => {
     }
   };
 
+  const fetchRoleApplications = async () => {
+    if (!user || !profile) return;
+    setLoadingApplications(true);
+    try {
+      const isDefaultAdmin =
+        user.email?.toLowerCase() === 'nexoviratech@gmail.com' ||
+        user.email?.toLowerCase() === 'nexovirasupport@gmail.com';
+      const effectiveRole = profile.role || (isDefaultAdmin ? 'SUPER_ADMIN' : '');
+
+      let loaded = false;
+      try {
+        const res = await fetch('/api/management/role-applications', {
+          headers: {
+            'x-user-id': user.uid,
+            'x-user-role': effectiveRole,
+            'x-user-email': user.email || '',
+          },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && Array.isArray(data.applications)) {
+            setRoleApplications(data.applications);
+            loaded = true;
+          }
+        }
+      } catch (e) {
+        console.warn('API role applications fetch error:', e);
+      }
+
+      if (!loaded) {
+        const appSnap = await getDocs(collection(db, 'roleApplications'));
+        const list: RoleApplication[] = [];
+        appSnap.forEach((docSnap) => {
+          list.push(docSnap.data() as RoleApplication);
+        });
+        setRoleApplications(list);
+      }
+    } catch (err: unknown) {
+      console.error('Error fetching role applications:', err);
+    } finally {
+      setLoadingApplications(false);
+    }
+  };
+
   useEffect(() => {
     fetchUsers();
+    fetchRoleApplications();
   }, [user, profile, statusFilter, roleFilter, verificationFilter]);
+
+  const handleReviewApplication = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reviewingApp || !user || !profile) return;
+    setSubmittingReview(true);
+    setActionFeedback(null);
+    try {
+      const isDefaultAdmin =
+        user.email?.toLowerCase() === 'nexoviratech@gmail.com' ||
+        user.email?.toLowerCase() === 'nexovirasupport@gmail.com';
+      const effectiveRole = profile.role || (isDefaultAdmin ? 'SUPER_ADMIN' : '');
+
+      let success = false;
+      let errorMsg = '';
+      try {
+        const res = await fetch(`/api/management/role-applications/${reviewingApp.applicationId}/review`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-id': user.uid,
+            'x-user-role': effectiveRole,
+            'x-user-email': user.email || '',
+          },
+          body: JSON.stringify({
+            status: reviewAction === 'APPROVE' ? 'APPROVED' : 'REJECTED',
+            rejectionReason: reviewAction === 'REJECT' ? reviewNotes : undefined,
+            internalNotes: reviewNotes || `Processed by ${user.email}`,
+          }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          success = true;
+        } else {
+          errorMsg = data.error || 'Server rejected review operation.';
+        }
+      } catch (err) {
+        errorMsg = err instanceof Error ? err.message : 'Network error';
+      }
+
+      if (success) {
+        setActionFeedback({
+          type: 'success',
+          text: `Application for ${reviewingApp.userName || reviewingApp.userEmail} was ${reviewAction === 'APPROVE' ? 'APPROVED' : 'REJECTED'} successfully.`,
+        });
+        setReviewingApp(null);
+        setReviewNotes('');
+        fetchRoleApplications();
+        fetchUsers();
+      } else {
+        setActionFeedback({ type: 'error', text: errorMsg || 'Failed to review role application.' });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Review submission error';
+      setActionFeedback({ type: 'error', text: msg });
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -479,177 +591,324 @@ export const ManagementUsersPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div className="p-4 rounded-2xl bg-[#011B33] border border-[#0682F4]/30 shadow-xl flex flex-col md:flex-row items-center justify-between gap-4">
-        <form onSubmit={handleSearchSubmit} className="w-full md:w-80 relative">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#CCD2D9]/60" />
-          <input
-            type="text"
-            placeholder="Search by name, email, or user ID..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white text-xs placeholder-[#CCD2D9]/40 focus:outline-none focus:border-[#08E6F9]"
-          />
-        </form>
+      {/* Tab Navigation: User Directory vs Role Applications */}
+      <div className="flex items-center gap-3 border-b border-[#0682F4]/30 pb-3">
+        <button
+          onClick={() => setActiveTab('USERS')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+            activeTab === 'USERS'
+              ? 'bg-[#0682F4] text-white shadow-lg shadow-[#0682F4]/20'
+              : 'bg-[#011B33] text-[#CCD2D9] hover:text-white border border-[#0682F4]/30'
+          }`}
+        >
+          <Users className="w-4 h-4" />
+          User Directory ({total})
+        </button>
 
-        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-semibold text-[#CCD2D9]/70">Email:</span>
-            <select
-              value={verificationFilter}
-              onChange={(e) => setVerificationFilter(e.target.value as any)}
-              className="px-3 py-1.5 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white text-xs focus:outline-none focus:border-[#08E6F9]"
-            >
-              <option value="ALL">All Email Status</option>
-              <option value="VERIFIED">Verified Only</option>
-              <option value="PENDING">Pending Email Verification</option>
-            </select>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-semibold text-[#CCD2D9]/70">Status:</span>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 py-1.5 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white text-xs focus:outline-none focus:border-[#08E6F9]"
-            >
-              <option value="ALL">All Statuses</option>
-              <option value="ACTIVE">ACTIVE</option>
-              <option value="RESTRICTED">RESTRICTED</option>
-              <option value="SUSPENDED">SUSPENDED</option>
-              <option value="UNDER_REVIEW">UNDER REVIEW</option>
-            </select>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-semibold text-[#CCD2D9]/70">Role:</span>
-            <select
-              value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value)}
-              className="px-3 py-1.5 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white text-xs focus:outline-none focus:border-[#08E6F9]"
-            >
-              <option value="ALL">All Roles</option>
-              <option value="CUSTOMER">CUSTOMER</option>
-              <option value="EXPERT">EXPERT</option>
-              <option value="ADMIN">ADMIN</option>
-              <option value="SUPER_ADMIN">SUPER ADMIN</option>
-              <option value="OPERATIONS">OPERATIONS</option>
-              <option value="FINANCE">FINANCE</option>
-              <option value="SUPPORT">SUPPORT</option>
-              <option value="CONTENT_MANAGER">CONTENT MANAGER</option>
-            </select>
-          </div>
-        </div>
+        <button
+          onClick={() => setActiveTab('APPLICATIONS')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+            activeTab === 'APPLICATIONS'
+              ? 'bg-[#0682F4] text-white shadow-lg shadow-[#0682F4]/20'
+              : 'bg-[#011B33] text-[#CCD2D9] hover:text-white border border-[#0682F4]/30'
+          }`}
+        >
+          <Shield className="w-4 h-4" />
+          Role Applications
+          {roleApplications.filter((a) => a.status === 'PENDING_REVIEW').length > 0 && (
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-amber-400 text-black font-extrabold animate-pulse">
+              {roleApplications.filter((a) => a.status === 'PENDING_REVIEW').length} PENDING
+            </span>
+          )}
+        </button>
       </div>
+
+      {activeTab === 'USERS' && (
+        <>
+          {/* Filter and Search Bar */}
+          <div className="p-4 rounded-2xl bg-[#011B33] border border-[#0682F4]/30 shadow-xl flex flex-col md:flex-row items-center justify-between gap-4">
+            <form onSubmit={handleSearchSubmit} className="w-full md:w-80 relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#CCD2D9]/60" />
+              <input
+                type="text"
+                placeholder="Search by name, email, or user ID..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white text-xs placeholder-[#CCD2D9]/40 focus:outline-none focus:border-[#08E6F9]"
+              />
+            </form>
+
+            <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-semibold text-[#CCD2D9]/70">Email:</span>
+                <select
+                  value={verificationFilter}
+                  onChange={(e) => setVerificationFilter(e.target.value as any)}
+                  className="px-3 py-1.5 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white text-xs focus:outline-none focus:border-[#08E6F9]"
+                >
+                  <option value="ALL">All Email Status</option>
+                  <option value="VERIFIED">Verified Only</option>
+                  <option value="PENDING">Pending Email Verification</option>
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-semibold text-[#CCD2D9]/70">Status:</span>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="px-3 py-1.5 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white text-xs focus:outline-none focus:border-[#08E6F9]"
+                >
+                  <option value="ALL">All Statuses</option>
+                  <option value="ACTIVE">ACTIVE</option>
+                  <option value="RESTRICTED">RESTRICTED</option>
+                  <option value="SUSPENDED">SUSPENDED</option>
+                  <option value="UNDER_REVIEW">UNDER REVIEW</option>
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-semibold text-[#CCD2D9]/70">Role:</span>
+                <select
+                  value={roleFilter}
+                  onChange={(e) => setRoleFilter(e.target.value)}
+                  className="px-3 py-1.5 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white text-xs focus:outline-none focus:border-[#08E6F9]"
+                >
+                  <option value="ALL">All Roles</option>
+                  <option value="CUSTOMER">CUSTOMER</option>
+                  <option value="AFFILIATE">AFFILIATE</option>
+                  <option value="EXPERT">EXPERT</option>
+                  <option value="ADMIN">ADMIN</option>
+                  <option value="SUPER_ADMIN">SUPER ADMIN</option>
+                  <option value="OPERATIONS">OPERATIONS</option>
+                  <option value="FINANCE">FINANCE</option>
+                  <option value="SUPPORT">SUPPORT</option>
+                  <option value="CONTENT_MANAGER">CONTENT MANAGER</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Users Data Table */}
-      <div className="rounded-2xl bg-[#011B33] border border-[#0682F4]/30 shadow-xl overflow-hidden">
-        {loading ? (
-          <div className="py-16 text-center text-xs text-[#CCD2D9]">
-            <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-[#08E6F9]" />
-            Loading authorized user records...
-          </div>
-        ) : users.length === 0 ? (
-          <div className="py-16 text-center text-xs text-[#CCD2D9]/60">
-            No user records matched your criteria.
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-[#01213D] border-b border-[#0682F4]/20 text-[#CCD2D9] font-mono text-[11px]">
-                <tr>
-                  <th className="px-4 py-3">User &amp; Contact</th>
-                  <th className="px-4 py-3">Role</th>
-                  <th className="px-4 py-3">Verification &amp; Standing</th>
-                  <th className="px-4 py-3">Ecosystem Activity</th>
-                  <th className="px-4 py-3">Capabilities</th>
-                  <th className="px-4 py-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#0682F4]/10 text-white">
-                {users.map((u) => (
-                  <tr key={u.userId} className="hover:bg-[#01213D]/40 transition">
-                    <td className="px-4 py-3.5">
-                      <div className="font-bold text-white text-xs">{u.fullName}</div>
-                      <div className="text-[11px] text-[#CCD2D9]/70 font-mono">{u.email}</div>
-                      <div className="text-[10px] text-[#CCD2D9]/40 font-mono mt-0.5">ID: {u.userId}</div>
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded bg-[#0682F4]/20 border border-[#0682F4]/40 text-[#08E6F9]">
-                        {u.role}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <div className="flex flex-col gap-1 items-start">
-                        {u.emailVerified ? (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center gap-1">
-                            <CheckCircle2 className="w-3 h-3" /> VERIFIED
+      {activeTab === 'USERS' ? (
+        /* Users Data Table */
+        <div className="rounded-2xl bg-[#011B33] border border-[#0682F4]/30 shadow-xl overflow-hidden">
+          {loading ? (
+            <div className="py-16 text-center text-xs text-[#CCD2D9]">
+              <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-[#08E6F9]" />
+              Loading authorized user records...
+            </div>
+          ) : users.length === 0 ? (
+            <div className="py-16 text-center text-xs text-[#CCD2D9]/60">
+              No user records matched your criteria.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-[#01213D] border-b border-[#0682F4]/20 text-[#CCD2D9] font-mono text-[11px]">
+                  <tr>
+                    <th className="px-4 py-3">User &amp; Contact</th>
+                    <th className="px-4 py-3">Role</th>
+                    <th className="px-4 py-3">Verification &amp; Standing</th>
+                    <th className="px-4 py-3">Ecosystem Activity</th>
+                    <th className="px-4 py-3">Capabilities</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#0682F4]/10 text-white">
+                  {users.map((u) => (
+                    <tr key={u.userId} className="hover:bg-[#01213D]/40 transition">
+                      <td className="px-4 py-3.5">
+                        <div className="font-bold text-white text-xs">{u.fullName}</div>
+                        <div className="text-[11px] text-[#CCD2D9]/70 font-mono">{u.email}</div>
+                        <div className="text-[10px] text-[#CCD2D9]/40 font-mono mt-0.5">ID: {u.userId}</div>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded bg-[#0682F4]/20 border border-[#0682F4]/40 text-[#08E6F9]">
+                          {u.role}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <div className="flex flex-col gap-1 items-start">
+                          {u.emailVerified ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3" /> VERIFIED
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center gap-1">
+                              <Clock className="w-3 h-3" /> PENDING EMAIL
+                            </span>
+                          )}
+                          {getStatusBadge(u.accountStatus)}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center gap-3 text-[11px] text-[#CCD2D9]/80 font-mono">
+                          <span title="Marketplace Orders" className="flex items-center gap-1">
+                            <Package className="w-3 h-3 text-[#0682F4]" /> {u.ordersCount}
                           </span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center gap-1">
-                            <Clock className="w-3 h-3" /> PENDING EMAIL
+                          <span title="Services Projects" className="flex items-center gap-1">
+                            <Briefcase className="w-3 h-3 text-[#26B2E2]" /> {u.servicesCount}
+                          </span>
+                          <span title="Academy Enrollments" className="flex items-center gap-1">
+                            <GraduationCap className="w-3 h-3 text-[#08E6F9]" /> {u.academyCount}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <div className="flex flex-wrap gap-1">
+                          {u.capabilities.map((cap) => (
+                            <span
+                              key={cap}
+                              className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-[#01213D] border border-[#0682F4]/30 text-[#CCD2D9]"
+                            >
+                              {cap}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3.5 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => {
+                              setSelectedUserForStatus(u);
+                              setNewStatus(u.accountStatus);
+                              setStatusReason('');
+                            }}
+                            className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-[#01213D] hover:bg-[#0682F4]/20 border border-[#0682F4]/30 text-[#08E6F9] transition cursor-pointer"
+                          >
+                            Status
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              setSelectedUserForRole(u);
+                              setNewRole(u.role);
+                              setRoleReason('');
+                            }}
+                            className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-[#01213D] hover:bg-[#0682F4]/20 border border-[#0682F4]/30 text-[#CCD2D9] hover:text-white transition cursor-pointer"
+                          >
+                            Role
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ) : (
+        /* Role Applications Table */
+        <div className="rounded-2xl bg-[#011B33] border border-[#0682F4]/30 shadow-xl overflow-hidden">
+          {loadingApplications ? (
+            <div className="py-16 text-center text-xs text-[#CCD2D9]">
+              <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-[#08E6F9]" />
+              Loading submitted role applications...
+            </div>
+          ) : roleApplications.length === 0 ? (
+            <div className="py-16 text-center text-xs text-[#CCD2D9]/60">
+              No role applications currently on record.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-[#01213D] border-b border-[#0682F4]/20 text-[#CCD2D9] font-mono text-[11px]">
+                  <tr>
+                    <th className="px-4 py-3">Applicant</th>
+                    <th className="px-4 py-3">Role Transition</th>
+                    <th className="px-4 py-3">Application Status</th>
+                    <th className="px-4 py-3">Experience / Channels</th>
+                    <th className="px-4 py-3">Submission Details</th>
+                    <th className="px-4 py-3 text-right">Review Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#0682F4]/10 text-white">
+                  {roleApplications.map((app) => (
+                    <tr key={app.applicationId} className="hover:bg-[#01213D]/40 transition">
+                      <td className="px-4 py-3.5">
+                        <div className="font-bold text-white text-xs">{app.userName || 'Member'}</div>
+                        <div className="text-[11px] text-[#CCD2D9]/70 font-mono">{app.userEmail}</div>
+                        <div className="text-[10px] text-[#CCD2D9]/40 font-mono mt-0.5">UID: {app.userId}</div>
+                      </td>
+                      <td className="px-4 py-3.5 font-mono text-[11px]">
+                        <span className="text-[#CCD2D9]/60">{app.currentRole || 'CUSTOMER'}</span>
+                        <span className="text-[#08E6F9] mx-1.5 font-bold">→</span>
+                        <span className="font-bold px-2 py-0.5 rounded bg-[#0682F4]/20 border border-[#0682F4]/40 text-[#08E6F9]">
+                          {app.targetRole}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        {app.status === 'PENDING_REVIEW' && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 border border-amber-500/30 text-amber-400">
+                            PENDING REVIEW
                           </span>
                         )}
-                        {getStatusBadge(u.accountStatus)}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <div className="flex items-center gap-3 text-[11px] text-[#CCD2D9]/80 font-mono">
-                        <span title="Marketplace Orders" className="flex items-center gap-1">
-                          <Package className="w-3 h-3 text-[#0682F4]" /> {u.ordersCount}
-                        </span>
-                        <span title="Services Projects" className="flex items-center gap-1">
-                          <Briefcase className="w-3 h-3 text-[#26B2E2]" /> {u.servicesCount}
-                        </span>
-                        <span title="Academy Enrollments" className="flex items-center gap-1">
-                          <GraduationCap className="w-3 h-3 text-[#08E6F9]" /> {u.academyCount}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <div className="flex flex-wrap gap-1">
-                        {u.capabilities.map((cap) => (
-                          <span
-                            key={cap}
-                            className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-[#01213D] border border-[#0682F4]/30 text-[#CCD2D9]"
-                          >
-                            {cap}
+                        {app.status === 'APPROVED' && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
+                            APPROVED
                           </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3.5 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
+                        )}
+                        {app.status === 'REJECTED' && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500/10 border border-red-500/30 text-red-400">
+                            REJECTED
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <div className="max-w-xs space-y-1">
+                          <p className="text-[11px] text-[#CCD2D9] truncate" title={app.reason}>
+                            {app.reason || 'None provided'}
+                          </p>
+                          {app.skills && app.skills.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {app.skills.map((s) => (
+                                <span key={s} className="px-1.5 py-0.2 rounded text-[9px] bg-[#01213D] border border-[#0682F4]/30 text-[#08E6F9]">
+                                  {s}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {app.socialChannels && app.socialChannels.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {app.socialChannels.map((c) => (
+                                <span key={c} className="px-1.5 py-0.2 rounded text-[9px] bg-[#01213D] border border-amber-500/30 text-amber-300">
+                                  {c}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3.5 text-[11px] font-mono text-[#CCD2D9]/70">
+                        {app.createdAt ? new Date(app.createdAt).toLocaleDateString() : 'Recent'}
+                        {app.reviewedBy && (
+                          <div className="text-[10px] text-[#08E6F9] mt-0.5">By: {app.reviewedBy}</div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3.5 text-right">
                         <button
                           onClick={() => {
-                            setSelectedUserForStatus(u);
-                            setNewStatus(u.accountStatus);
-                            setStatusReason('');
+                            setReviewingApp(app);
+                            setReviewAction('APPROVE');
+                            setReviewNotes('');
                           }}
-                          className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-[#01213D] hover:bg-[#0682F4]/20 border border-[#0682F4]/30 text-[#08E6F9] transition cursor-pointer"
+                          className="px-3 py-1.5 rounded-xl text-xs font-bold bg-[#0682F4] hover:bg-[#05A9F7] text-white transition cursor-pointer shadow-sm"
                         >
-                          Status
+                          Review
                         </button>
-
-                        <button
-                          onClick={() => {
-                            setSelectedUserForRole(u);
-                            setNewRole(u.role);
-                            setRoleReason('');
-                          }}
-                          className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-[#01213D] hover:bg-[#0682F4]/20 border border-[#0682F4]/30 text-[#CCD2D9] hover:text-white transition cursor-pointer"
-                        >
-                          Role
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Account Status Modal */}
       {selectedUserForStatus && (
@@ -766,6 +1025,7 @@ export const ManagementUsersPage: React.FC = () => {
                   className="w-full px-3 py-2 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white text-xs focus:outline-none focus:border-[#08E6F9]"
                 >
                   <option value="CUSTOMER">CUSTOMER (Standard consumer)</option>
+                  <option value="AFFILIATE">AFFILIATE (Partner affiliate)</option>
                   <option value="EXPERT">EXPERT (Services specialist)</option>
                   <option value="SUPPORT">SUPPORT (Support specialist)</option>
                   <option value="CONTENT_MANAGER">CONTENT MANAGER (Products &amp; Academy)</option>
@@ -805,6 +1065,130 @@ export const ManagementUsersPage: React.FC = () => {
                 >
                   <Save className="w-3.5 h-3.5" />
                   {submittingRole ? 'Saving...' : 'Update Role'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Review Role Application Modal */}
+      {reviewingApp && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-[#011B33] border border-[#0682F4]/40 rounded-2xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-[#0682F4]/20 pb-3">
+              <div className="flex items-center gap-2 text-white font-bold text-sm">
+                <ShieldCheck className="w-4 h-4 text-[#08E6F9]" />
+                Review Role Application
+              </div>
+              <button
+                onClick={() => setReviewingApp(null)}
+                className="text-[#CCD2D9] hover:text-white p-1 rounded-lg transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3 rounded-xl bg-[#01213D] border border-[#0682F4]/20 text-xs space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[#CCD2D9]/70">Applicant:</span>
+                <span className="font-bold text-white">{reviewingApp.userName || 'Member'} ({reviewingApp.userEmail})</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[#CCD2D9]/70">Requested Role:</span>
+                <span className="font-bold font-mono text-[#08E6F9] px-2 py-0.5 rounded bg-[#0682F4]/20 border border-[#0682F4]/40">
+                  {reviewingApp.targetRole}
+                </span>
+              </div>
+              {reviewingApp.portfolioUrl && (
+                <div className="flex items-center justify-between">
+                  <span className="text-[#CCD2D9]/70">Portfolio / Link:</span>
+                  <a
+                    href={reviewingApp.portfolioUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[#08E6F9] underline truncate max-w-xs"
+                  >
+                    {reviewingApp.portfolioUrl}
+                  </a>
+                </div>
+              )}
+              {reviewingApp.reason && (
+                <div className="pt-1 border-t border-[#0682F4]/10">
+                  <span className="text-[#CCD2D9]/70 block mb-0.5">Application Rationale:</span>
+                  <p className="text-white italic">{reviewingApp.reason}</p>
+                </div>
+              )}
+            </div>
+
+            <form onSubmit={handleReviewApplication} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-[#CCD2D9] mb-1">Decision</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setReviewAction('APPROVE')}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold border transition cursor-pointer flex items-center justify-center gap-2 ${
+                      reviewAction === 'APPROVE'
+                        ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400 shadow-md shadow-emerald-500/10'
+                        : 'bg-[#01213D] border-[#0682F4]/30 text-[#CCD2D9]'
+                    }`}
+                  >
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    Approve Application
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setReviewAction('REJECT')}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold border transition cursor-pointer flex items-center justify-center gap-2 ${
+                      reviewAction === 'REJECT'
+                        ? 'bg-red-500/20 border-red-500 text-red-400 shadow-md shadow-red-500/10'
+                        : 'bg-[#01213D] border-[#0682F4]/30 text-[#CCD2D9]'
+                    }`}
+                  >
+                    <AlertCircle className="w-4 h-4 text-red-400" />
+                    Reject Application
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#CCD2D9] mb-1">
+                  {reviewAction === 'APPROVE' ? 'Internal Notes / Audit Comment' : 'Rejection Reason (Visible to user) *'}
+                </label>
+                <textarea
+                  required={reviewAction === 'REJECT'}
+                  rows={3}
+                  placeholder={
+                    reviewAction === 'APPROVE'
+                      ? 'Optional administrative notes or welcome directives...'
+                      : 'Provide explicit, professional reasoning for this rejection...'
+                  }
+                  value={reviewNotes}
+                  onChange={(e) => setReviewNotes(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white text-xs placeholder-[#CCD2D9]/40 focus:outline-none focus:border-[#08E6F9] resize-none"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-[#0682F4]/20">
+                <button
+                  type="button"
+                  onClick={() => setReviewingApp(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold bg-[#01213D] hover:bg-[#01213D]/80 border border-[#0682F4]/20 text-[#CCD2D9] transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingReview}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold text-white transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${
+                    reviewAction === 'APPROVE'
+                      ? 'bg-emerald-600 hover:bg-emerald-500'
+                      : 'bg-red-600 hover:bg-red-500'
+                  }`}
+                >
+                  {submittingReview ? 'Processing...' : reviewAction === 'APPROVE' ? 'Confirm Approval' : 'Confirm Rejection'}
                 </button>
               </div>
             </form>

@@ -10,6 +10,7 @@ import { HomePage } from './views/HomePage';
 import { FutureScopeView } from './views/FutureScopeView';
 import { SignInPage } from './views/auth/SignInPage';
 import { RegisterPage } from './views/auth/RegisterPage';
+import { SelectRolePage } from './views/auth/SelectRolePage';
 import { ForgotPasswordPage } from './views/auth/ForgotPasswordPage';
 import { VerifyEmailPage } from './views/auth/VerifyEmailPage';
 import { AccountPage } from './views/account/AccountPage';
@@ -273,6 +274,9 @@ const MainRouterView: React.FC = () => {
 
     case '/register':
       return <RegisterPage />;
+
+    case '/select-role':
+      return <SelectRolePage />;
 
     case '/forgot-password':
       return <ForgotPasswordPage />;

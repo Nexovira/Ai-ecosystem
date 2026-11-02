@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   Loader2,
   Lock,
+  GraduationCap,
 } from 'lucide-react';
 
 interface CourseDetailPageProps {
@@ -257,19 +258,11 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({ slug }) => {
 
             <p className="text-lg text-[#CCD2D9] leading-relaxed">{course.shortDescription}</p>
 
-            {/* Instructor Summary */}
+            {/* Instructor Summary - Monogram Initials Avatar */}
             <div className="p-4 rounded-xl bg-[#01213D] border border-[#0682F4]/20 flex items-center gap-4">
-              {course.instructorImage ? (
-                <img
-                  src={course.instructorImage}
-                  alt={course.instructorName}
-                  className="w-14 h-14 rounded-full object-cover border-2 border-[#0682F4]"
-                />
-              ) : (
-                <div className="w-14 h-14 rounded-full bg-[#0682F4]/20 border border-[#0682F4]/40 flex items-center justify-center font-bold text-lg text-[#08E6F9]">
-                  {course.instructorName.charAt(0)}
-                </div>
-              )}
+              <div className="w-14 h-14 rounded-full bg-[#0682F4]/20 border border-[#0682F4]/40 flex items-center justify-center font-bold text-xl text-[#08E6F9] shrink-0">
+                {course.instructorName.charAt(0)}
+              </div>
               <div>
                 <div className="text-xs text-[#CCD2D9] uppercase tracking-wider">Lead Instructor &amp; Mentor</div>
                 <div className="text-base font-bold text-white">{course.instructorName}</div>
@@ -283,10 +276,19 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({ slug }) => {
           {/* Right Action / Scholarship Enrollment Box */}
           <div className="lg:col-span-1">
             <div className="sticky top-24 rounded-2xl bg-[#01213D] border border-[#0682F4]/40 shadow-2xl p-6 sm:p-8 space-y-6">
-              {/* Media Preview */}
-              <div className="rounded-xl overflow-hidden h-44 w-full bg-slate-900 border border-[#0682F4]/20 relative">
-                <img src={course.courseImage} alt={course.title} className="w-full h-full object-cover" />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#01213D] via-transparent to-transparent opacity-70" />
+              {/* Brand Curriculum Graphic Surface (No Image) */}
+              <div className="rounded-xl overflow-hidden h-36 w-full bg-gradient-to-br from-[#011B33] to-[#01213D] border border-[#0682F4]/30 p-5 flex flex-col justify-between relative">
+                <div className="flex items-center justify-between">
+                  <div className="p-2.5 rounded-xl bg-[#0682F4]/20 border border-[#0682F4]/40 text-[#08E6F9]">
+                    <GraduationCap className="w-6 h-6" />
+                  </div>
+                  <span className="px-2.5 py-1 rounded-md bg-[#0682F4] text-[#01213D] text-xs font-bold font-mono">
+                    {course.level}
+                  </span>
+                </div>
+                <div className="text-xs font-bold text-white font-mono uppercase tracking-wider">
+                  {course.categoryName || course.category}
+                </div>
               </div>
 
               {/* Price & Coverage */}

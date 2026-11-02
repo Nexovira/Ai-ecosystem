@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from '../../context/RouterContext';
 import { useAcademy } from '../../context/AcademyContext';
-import { Search, Filter, Clock, ArrowRight, BookOpen, Layers } from 'lucide-react';
+import { Search, Filter, Clock, ArrowRight, BookOpen, Layers, GraduationCap } from 'lucide-react';
 
 export const CourseDirectoryPage: React.FC = () => {
   const { navigate, currentPath } = useRouter();
@@ -197,25 +197,29 @@ export const CourseDirectoryPage: React.FC = () => {
                 key={course.courseId}
                 className="group flex flex-col rounded-2xl bg-[#01213D] border border-[#0682F4]/30 overflow-hidden hover:border-[#08E6F9]/60 hover:shadow-2xl hover:shadow-[#0682F4]/15 transition-all duration-300"
               >
-                {/* Course Header Image */}
-                <div className="relative h-52 w-full overflow-hidden bg-slate-900">
-                  <img
-                    src={course.courseImage}
-                    alt={course.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-[#01213D] via-transparent to-transparent opacity-60" />
-                  <div className="absolute top-3 left-3 px-3 py-1 rounded-md bg-[#01213D]/90 backdrop-blur-md border border-[#0682F4]/40 text-[#08E6F9] text-xs font-semibold">
-                    {course.categoryName || course.category}
-                  </div>
-                  <div className="absolute top-3 right-3 px-2.5 py-1 rounded-md bg-[#0682F4] text-[#01213D] text-xs font-bold">
-                    {course.level}
-                  </div>
-                  {course.isFeatured && (
-                    <div className="absolute bottom-3 left-3 px-2 py-0.5 rounded bg-[#08E6F9] text-[#01213D] text-[10px] font-extrabold uppercase tracking-wide">
-                      Featured
+                {/* Course Header Surface (No External Image) */}
+                <div className="relative h-44 w-full overflow-hidden bg-gradient-to-br from-[#011B33] to-[#01213D] border-b border-[#0682F4]/30 p-5 flex flex-col justify-between">
+                  <div className="flex items-center justify-between">
+                    <div className="p-2.5 rounded-xl bg-[#0682F4]/20 border border-[#0682F4]/40 text-[#08E6F9]">
+                      <GraduationCap className="w-5 h-5" />
                     </div>
-                  )}
+                    <div className="flex items-center gap-2">
+                      {course.isFeatured && (
+                        <div className="px-2 py-0.5 rounded bg-[#08E6F9] text-[#01213D] text-[10px] font-extrabold uppercase tracking-wide">
+                          Featured
+                        </div>
+                      )}
+                      <div className="px-2.5 py-1 rounded-md bg-[#0682F4] text-[#01213D] text-xs font-bold font-mono">
+                        {course.level}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="px-3 py-1 rounded-md bg-[#01213D]/90 border border-[#0682F4]/40 text-[#08E6F9] text-xs font-semibold">
+                      {course.categoryName || course.category}
+                    </div>
+                    <span className="text-[11px] font-mono text-[#CCD2D9]/70">Track</span>
+                  </div>
                 </div>
 
                 {/* Card Body */}

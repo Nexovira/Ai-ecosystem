@@ -112,17 +112,20 @@ export const AcademyLandingPage: React.FC = () => {
                   key={course.courseId}
                   className="group flex flex-col rounded-2xl bg-[#01213D] border border-[#0682F4]/30 overflow-hidden hover:border-[#08E6F9]/60 hover:shadow-xl hover:shadow-[#0682F4]/10 transition-all duration-300"
                 >
-                  <div className="relative h-48 w-full overflow-hidden bg-slate-900">
-                    <img
-                      src={course.courseImage}
-                      alt={course.title}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    />
-                    <div className="absolute top-3 left-3 px-2.5 py-1 rounded-md bg-[#01213D]/90 backdrop-blur-md border border-[#0682F4]/40 text-[#08E6F9] text-xs font-semibold">
-                      {course.categoryName || course.category}
+                  <div className="relative h-40 w-full overflow-hidden bg-gradient-to-br from-[#011B33] to-[#01213D] border-b border-[#0682F4]/30 p-5 flex flex-col justify-between">
+                    <div className="flex items-center justify-between">
+                      <div className="p-2.5 rounded-xl bg-[#0682F4]/20 border border-[#0682F4]/40 text-[#08E6F9]">
+                        <GraduationCap className="w-5 h-5" />
+                      </div>
+                      <div className="px-2.5 py-1 rounded-md bg-[#0682F4] text-[#01213D] text-xs font-bold font-mono">
+                        {course.level}
+                      </div>
                     </div>
-                    <div className="absolute top-3 right-3 px-2.5 py-1 rounded-md bg-[#0682F4] text-[#01213D] text-xs font-bold">
-                      {course.level}
+                    <div className="flex items-center justify-between">
+                      <div className="px-2.5 py-0.5 rounded-md bg-[#01213D]/90 border border-[#0682F4]/40 text-[#08E6F9] text-xs font-semibold">
+                        {course.categoryName || course.category}
+                      </div>
+                      <span className="text-[11px] font-mono text-[#CCD2D9]/70">Track</span>
                     </div>
                   </div>
 

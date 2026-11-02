@@ -60,16 +60,8 @@ export const AccountLayout: React.FC<AccountLayoutProps> = ({
 
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
             <div className="flex items-center gap-4 sm:gap-5">
-              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-[#01213D] border-2 border-[#0682F4]/50 overflow-hidden shrink-0 flex items-center justify-center shadow-lg">
-                {profile?.photoURL || user?.photoURL ? (
-                  <img
-                    src={profile?.photoURL || user?.photoURL || ''}
-                    alt={profile?.fullName || 'User Avatar'}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <User className="w-8 h-8 text-[#08E6F9]" />
-                )}
+              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-[#01213D] border-2 border-[#0682F4]/50 overflow-hidden shrink-0 flex items-center justify-center shadow-lg font-bold text-2xl text-[#08E6F9]">
+                {(profile?.fullName || user?.displayName || user?.email || 'M').charAt(0).toUpperCase()}
               </div>
 
               <div className="space-y-1">

@@ -10,6 +10,7 @@ export type ManagementRole =
 
 export type UserRole =
   | 'CUSTOMER'
+  | 'AFFILIATE'
   | 'SELLER'
   | 'EXPERT'
   | ManagementRole;
@@ -21,6 +22,27 @@ export type AccountStatus =
   | 'UNDER_REVIEW'
   | 'DISABLED';
 
+export type RoleApplicationStatus = 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED';
+
+export interface RoleApplication {
+  applicationId: string;
+  userId: string;
+  userEmail: string;
+  userName: string;
+  currentRole: UserRole;
+  targetRole: 'AFFILIATE' | 'EXPERT';
+  status: RoleApplicationStatus;
+  reason?: string;
+  skills?: string[];
+  portfolioUrl?: string;
+  socialChannels?: string[];
+  reviewedBy?: string;
+  reviewedAt?: string;
+  reviewNotes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface UserProfile {
   userId: string;
   fullName: string;
@@ -28,6 +50,8 @@ export interface UserProfile {
   phoneNumber?: string;
   photoURL?: string;
   role: UserRole;
+  pendingRole?: UserRole | null;
+  roleApplicationId?: string | null;
   accountStatus: AccountStatus;
   emailVerified: boolean;
   createdAt: string;

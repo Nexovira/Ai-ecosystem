@@ -92,11 +92,9 @@ export const ExpertProfilePage: React.FC<ExpertProfilePageProps> = ({ slugOrId }
         <div className="bg-[#011B33] border border-[#0682F4]/30 rounded-3xl p-6 sm:p-10 shadow-2xl mb-10">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8">
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
-              <img
-                src={expert.profileImage}
-                alt={expert.fullName}
-                className="w-24 h-24 sm:w-32 sm:h-32 rounded-2xl object-cover border-2 border-[#08E6F9]/40 shadow-xl shrink-0"
-              />
+              <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-2xl bg-[#01213D] border-2 border-[#08E6F9]/40 shadow-xl flex items-center justify-center font-black text-4xl sm:text-5xl text-[#08E6F9] shrink-0">
+                {expert.fullName.charAt(0)}
+              </div>
               <div className="space-y-2">
                 <div className="flex items-center gap-2 flex-wrap">
                   <h1 className="text-2xl sm:text-4xl font-black text-white">

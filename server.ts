@@ -2,6 +2,8 @@ import express, { Request, Response } from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
+import { db } from './src/lib/firebase';
+import { doc, getDoc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { commerceService } from './src/server/commerceService';
 import { servicesService } from './src/server/servicesService';
 import { academyService } from './src/server/academyService';
@@ -2445,6 +2447,190 @@ Respond with a strictly valid JSON object matching this schema:
     } catch (err: unknown) {
       console.error('Error in bootstrap-first-admin:', err);
       return res.status(500).json({ success: false, error: 'Internal administrator bootstrap error' });
+    }
+  });
+
+  /**
+   * POST /api/auth/select-role
+   * Allows authenticated users to select CUSTOMER role immediately or submit
+   * application for EXPERT or AFFILIATE specialization. Strictly denies admin elevation.
+   */
+  app.post(['/api/auth/select-role', '/auth/select-role'], async (req: Request, res: Response) => {
+    try {
+      const userId = req.headers['x-user-id'] as string;
+      const userEmail = ((req.headers['x-user-email'] as string) || '').trim().toLowerCase();
+
+      if (!userId || !isValidIdentifier(userId)) {
+        return res.status(401).json({ success: false, error: 'Unauthorized: User identifier required.' });
+      }
+
+      const { role, reason, skills, portfolioUrl, channels } = req.body;
+      const targetRole = role as string;
+
+      if (!targetRole || !['CUSTOMER', 'AFFILIATE', 'EXPERT'].includes(targetRole)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid role selection. Available user roles are CUSTOMER, AFFILIATE, and EXPERT.',
+        });
+      }
+
+      if (['ADMIN', 'SUPER_ADMIN', 'STAFF'].includes(targetRole)) {
+        return res.status(403).json({
+          success: false,
+          error: 'Administrative privileges cannot be self-assigned and require direct credentialing by the platform owner.',
+        });
+      }
+
+      const now = new Date().toISOString();
+      const userDocRef = doc(db, 'users', userId);
+
+      if (targetRole === 'CUSTOMER') {
+        await updateDoc(userDocRef, {
+          role: 'CUSTOMER',
+          pendingRole: null,
+          roleApplicationId: null,
+          accountStatus: 'ACTIVE',
+          updatedAt: serverTimestamp(),
+        }).catch(async () => {
+          // If updateDoc failed because doc didn't exist, set it
+          await setDoc(userDocRef, {
+            userId,
+            email: userEmail,
+            fullName: 'Member',
+            role: 'CUSTOMER',
+            accountStatus: 'ACTIVE',
+            emailVerified: false,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        });
+
+        return res.json({
+          success: true,
+          role: 'CUSTOMER',
+          status: 'ACTIVE',
+          message: 'Account role is now active as Customer.',
+        });
+      } else {
+        // AFFILIATE or EXPERT application
+        const appId = `roleapp_${userId}_${targetRole.toLowerCase()}`;
+        const appPayload = {
+          applicationId: appId,
+          userId,
+          userEmail,
+          userName: userEmail.split('@')[0] || 'Member',
+          currentRole: 'CUSTOMER',
+          targetRole,
+          status: 'PENDING_REVIEW',
+          reason: reason || `Requested ${targetRole.toLowerCase()} role from selection console.`,
+          skills: Array.isArray(skills) ? skills : [],
+          portfolioUrl: portfolioUrl || '',
+          socialChannels: Array.isArray(channels) ? channels : [],
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        };
+
+        await setDoc(doc(db, 'roleApplications', appId), appPayload);
+
+        if (targetRole === 'EXPERT') {
+          await setDoc(doc(db, 'expertApplications', userId), {
+            applicationId: userId,
+            userId,
+            email: userEmail,
+            status: 'PENDING_REVIEW',
+            skills: Array.isArray(skills) ? skills : [],
+            portfolioUrl: portfolioUrl || '',
+            submittedAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        } else if (targetRole === 'AFFILIATE') {
+          await setDoc(doc(db, 'affiliateApplications', appId), {
+            applicationId: appId,
+            userId,
+            email: userEmail,
+            status: 'PENDING_REVIEW',
+            promotionChannels: Array.isArray(channels) ? channels : ['Website', 'Social Media'],
+            audienceDescription: reason || 'Partner applicant',
+            promotionalExperience: 'Direct applicant',
+            preferredCategories: ['All'],
+            createdAt: now,
+            updatedAt: now,
+          });
+        }
+
+        await updateDoc(userDocRef, {
+          pendingRole: targetRole,
+          roleApplicationId: appId,
+          updatedAt: serverTimestamp(),
+        });
+
+        return res.json({
+          success: true,
+          role: targetRole,
+          status: 'PENDING_REVIEW',
+          message: `Your ${targetRole.toLowerCase()} application has been submitted and is pending review by management.`,
+        });
+      }
+    } catch (err: unknown) {
+      console.error('Error in select-role endpoint:', err);
+      return res.status(500).json({
+        success: false,
+        error: err instanceof Error ? err.message : 'Internal role selection error.',
+      });
+    }
+  });
+
+  /**
+   * GET /api/management/role-applications
+   * Lists pending and reviewed role applications for management oversight.
+   */
+  app.get(['/api/management/role-applications', '/management/role-applications'], async (req: Request, res: Response) => {
+    try {
+      const authResult = requireManagementAuth(req, res);
+      if (!authResult) return;
+
+      const statusFilter = (req.query.status as string) || 'ALL';
+      const applications = await managementService.getRoleApplications(statusFilter);
+      return res.json({ success: true, applications });
+    } catch (err: unknown) {
+      console.error('Error in get role applications:', err);
+      return res.status(500).json({ success: false, error: 'Failed to retrieve role applications.' });
+    }
+  });
+
+  /**
+   * POST /api/management/role-applications/:appId/review
+   * Approves or rejects a user role application and synchronizes profile status.
+   */
+  app.post(['/api/management/role-applications/:appId/review', '/management/role-applications/:appId/review'], async (req: Request, res: Response) => {
+    try {
+      const authResult = requireManagementAuth(req, res);
+      if (!authResult) return;
+
+      const { appId } = req.params;
+      const { status, reviewNotes } = req.body;
+
+      if (!status || !['APPROVED', 'REJECTED'].includes(status)) {
+        return res.status(400).json({ success: false, error: 'Status must be APPROVED or REJECTED.' });
+      }
+
+      const result = await managementService.reviewRoleApplication({
+        applicationId: appId,
+        status,
+        reviewNotes,
+        actorId: authResult.userId,
+        actorEmail: authResult.userEmail,
+        actorRole: authResult.userRole,
+      });
+
+      if (!result.success) {
+        return res.status(400).json(result);
+      }
+
+      return res.json(result);
+    } catch (err: unknown) {
+      console.error('Error reviewing role application:', err);
+      return res.status(500).json({ success: false, error: 'Internal review application error.' });
     }
   });
 

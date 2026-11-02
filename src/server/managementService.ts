@@ -574,6 +574,118 @@ export class ManagementService {
     const allUsers = await this.getAllUsers();
     return allUsers.filter((u) => isManagementRole(u.role));
   }
+
+  /**
+   * Retrieves pending or all role applications from Firestore.
+   */
+  async getRoleApplications(statusFilter?: string): Promise<any[]> {
+    const list: any[] = [];
+    try {
+      const snap = await getDocs(collection(db, 'roleApplications')).catch(() => null);
+      if (snap && snap.docs) {
+        snap.forEach((d) => {
+          const item = d.data();
+          if (!statusFilter || statusFilter === 'ALL' || item.status === statusFilter) {
+            list.push({ ...item, applicationId: d.id });
+          }
+        });
+      }
+    } catch (err) {
+      console.warn('getRoleApplications fetch error:', err);
+    }
+    return list;
+  }
+
+  /**
+   * Reviews a role application (APPROVE or REJECT) and synchronizes user role.
+   */
+  async reviewRoleApplication(params: {
+    applicationId: string;
+    status: 'APPROVED' | 'REJECTED';
+    reviewNotes?: string;
+    actorId: string;
+    actorEmail: string;
+    actorRole: string;
+  }): Promise<{ success: boolean; message: string; error?: string }> {
+    try {
+      const appRef = doc(db, 'roleApplications', params.applicationId);
+      const appSnap = await getDoc(appRef);
+      if (!appSnap.exists()) {
+        return { success: false, message: 'Role application record not found.', error: 'Role application record not found.' };
+      }
+
+      const appData = appSnap.data();
+      const targetUserId = appData.userId;
+      const targetRole = appData.targetRole as UserRole;
+      const now = new Date().toISOString();
+
+      await updateDoc(appRef, {
+        status: params.status,
+        reviewedBy: params.actorEmail,
+        reviewedAt: now,
+        reviewNotes: params.reviewNotes || '',
+        updatedAt: now,
+      });
+
+      if (params.status === 'APPROVED') {
+        const userRef = doc(db, 'users', targetUserId);
+        await updateDoc(userRef, {
+          role: targetRole,
+          pendingRole: null,
+          accountStatus: 'ACTIVE',
+          updatedAt: now,
+        });
+
+        if (targetRole === 'EXPERT') {
+          try {
+            await updateDoc(doc(db, 'expertApplications', targetUserId), {
+              status: 'APPROVED',
+              updatedAt: now,
+            });
+          } catch {}
+        } else if (targetRole === 'AFFILIATE') {
+          try {
+            await affiliateService.reviewApplication({
+              applicationId: params.applicationId,
+              status: 'APPROVED',
+              reviewedBy: params.actorEmail,
+              userRole: params.actorRole,
+            });
+          } catch {}
+        }
+      } else {
+        const userRef = doc(db, 'users', targetUserId);
+        await updateDoc(userRef, {
+          pendingRole: null,
+          updatedAt: now,
+        });
+      }
+
+      await this.recordAuditLog({
+        actorId: params.actorId,
+        actorEmail: params.actorEmail,
+        actorRole: params.actorRole,
+        action: `ROLE_APPLICATION_${params.status}`,
+        targetType: 'ROLE_APPLICATION',
+        targetId: params.applicationId,
+        previousState: { status: appData.status },
+        newState: { status: params.status, targetRole },
+        reason: params.reviewNotes || `Administrator ${params.status.toLowerCase()} role application.`,
+      });
+
+      return {
+        success: true,
+        message: `Role application ${params.status.toLowerCase()} successfully.`,
+      };
+    } catch (err: unknown) {
+      console.error('Error reviewing role application:', err);
+      return {
+        success: false,
+        message: 'Failed to process role application review.',
+        error: err instanceof Error ? err.message : 'Failed to process role application review.',
+      };
+    }
+  }
 }
 
 export const managementService = new ManagementService();

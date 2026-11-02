@@ -6,7 +6,6 @@ import { RoutePath } from '../../types';
 interface DiscoverCardProps {
   title: string;
   description: string;
-  image: string;
   actionText: string;
   path: RoutePath;
   icon: React.ComponentType<{ className?: string }>;
@@ -20,7 +19,6 @@ export const DiscoverSection: React.FC = () => {
     {
       title: 'Marketplace',
       description: 'Discover electronics, appliances, digital publications, and computing essentials verified for quality.',
-      image: '/assets/images/marketplace_laptop_1790288896761.jpg',
       actionText: 'Browse Marketplace',
       path: '/marketplace',
       icon: ShoppingBag,
@@ -29,7 +27,6 @@ export const DiscoverSection: React.FC = () => {
     {
       title: 'Tech & Digital Services',
       description: 'Connect with verified software engineers, UI/UX designers, and cloud architects for your project requirements.',
-      image: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?q=80&w=800&auto=format&fit=crop',
       actionText: 'Explore Services',
       path: '/services',
       icon: Briefcase,
@@ -38,7 +35,6 @@ export const DiscoverSection: React.FC = () => {
     {
       title: 'Nexovira Academy',
       description: 'Build production-ready skills through project-driven courses, real curriculum, and guided scholarships.',
-      image: 'https://images.unsplash.com/photo-1531482615713-2afd69097998?q=80&w=800&auto=format&fit=crop',
       actionText: 'Browse Courses',
       path: '/academy',
       icon: GraduationCap,
@@ -47,7 +43,6 @@ export const DiscoverSection: React.FC = () => {
     {
       title: 'Digital Opportunities',
       description: 'Participate as an approved affiliate to promote eligible offers and earn transparent commissions.',
-      image: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?q=80&w=800&auto=format&fit=crop',
       actionText: 'Discover Opportunities',
       path: '/affiliate',
       icon: TrendingUp,
@@ -82,17 +77,18 @@ export const DiscoverSection: React.FC = () => {
                 onClick={() => navigate(card.path)}
                 className="group rounded-3xl bg-white border border-[#E8EDF2] overflow-hidden hover:border-[#028BFA] transition-all duration-300 hover:shadow-xl hover:shadow-slate-200/50 flex flex-col justify-between cursor-pointer"
               >
-                {/* Top Image Container */}
-                <div className="relative aspect-[16/10] overflow-hidden bg-slate-100">
-                  <img
-                    src={card.image}
-                    alt={card.title}
-                    loading="lazy"
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                  />
-                  {/* Subtle Corner Icon Pill */}
-                  <div className={`absolute top-3 left-3 p-2 rounded-xl bg-gradient-to-r ${card.accentColor} text-white shadow-md shadow-slate-900/10`}>
-                    <Icon className="w-4 h-4" />
+                {/* Brand Graphic Header Container - Clean Vector & Gradient */}
+                <div className={`relative h-32 overflow-hidden bg-gradient-to-br ${card.accentColor} p-6 flex flex-col justify-between`}>
+                  <div className="flex items-center justify-between">
+                    <div className="p-2.5 rounded-2xl bg-white/20 backdrop-blur-md text-white shadow-inner">
+                      <Icon className="w-6 h-6" />
+                    </div>
+                    <span className="text-[10px] font-mono tracking-widest text-white/80 font-bold uppercase">
+                      HUB
+                    </span>
+                  </div>
+                  <div className="font-display font-black text-xl text-white tracking-tight">
+                    {card.title}
                   </div>
                 </div>
 

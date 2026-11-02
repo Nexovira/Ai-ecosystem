@@ -34,8 +34,13 @@ interface AuthContextType {
     email: string,
     password: string,
     fullName: string,
-    phoneNumber?: string
+    phoneNumber?: string,
+    selectedRole?: 'CUSTOMER' | 'AFFILIATE' | 'EXPERT'
   ) => Promise<{ success: boolean; emailSent?: boolean; emailError?: string; error?: string }>;
+  selectRole: (
+    targetRole: 'CUSTOMER' | 'AFFILIATE' | 'EXPERT',
+    details?: { reason?: string; portfolioUrl?: string; skills?: string[]; channels?: string[] }
+  ) => Promise<{ success: boolean; status?: string; message?: string; error?: string }>;
   signInUser: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   signInWithGoogle: () => Promise<{ success: boolean; error?: string }>;
   signOutUser: () => Promise<void>;
@@ -111,6 +116,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               phoneNumber: data.phoneNumber || '',
               photoURL: data.photoURL || currentUser.photoURL || '',
               role: resolvedRole,
+              pendingRole: (data.pendingRole as UserRole) || null,
+              roleApplicationId: data.roleApplicationId || null,
               accountStatus: (data.accountStatus as AccountStatus) || 'ACTIVE',
               emailVerified: currentUser.emailVerified || data.emailVerified || false,
               createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
@@ -130,6 +137,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               phoneNumber: currentUser.phoneNumber || '',
               photoURL: currentUser.photoURL || '',
               role: defaultRole,
+              pendingRole: null,
+              roleApplicationId: null,
               accountStatus: 'ACTIVE',
               emailVerified: Boolean(currentUser.emailVerified),
               createdAt: serverTimestamp(),
@@ -157,6 +166,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               phoneNumber: currentUser.phoneNumber || '',
               photoURL: currentUser.photoURL || '',
               role: defaultRole,
+              pendingRole: null,
+              roleApplicationId: null,
               accountStatus: 'ACTIVE',
               emailVerified: Boolean(currentUser.emailVerified),
               createdAt: new Date().toISOString(),
@@ -182,7 +193,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     email: string,
     password: string,
     fullName: string,
-    phoneNumber?: string
+    phoneNumber?: string,
+    selectedRole: 'CUSTOMER' | 'AFFILIATE' | 'EXPERT' = 'CUSTOMER'
   ): Promise<{ success: boolean; emailSent?: boolean; emailError?: string; error?: string }> => {
     setLoading(true);
     isRegisteringRef.current = true;
@@ -238,7 +250,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         cleanEmail === 'nexoviratech@gmail.com' ||
         cleanEmail === 'nexovirasupport@gmail.com';
       const role: UserRole = isDefaultAdmin ? 'SUPER_ADMIN' : 'CUSTOMER';
+      const pendingRole: UserRole | null = (!isDefaultAdmin && selectedRole !== 'CUSTOMER') ? selectedRole : null;
       const cleanPhone = (phoneNumber && phoneNumber.trim().length > 0) ? phoneNumber.trim().slice(0, 25) : '';
+      const now = new Date().toISOString();
+
+      let roleApplicationId: string | null = null;
+      if (pendingRole) {
+        roleApplicationId = `roleapp_${newUser.uid}_${pendingRole.toLowerCase()}`;
+      }
 
       const initialProfile = {
         userId: newUser.uid,
@@ -247,6 +266,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         phoneNumber: cleanPhone,
         photoURL: '',
         role: role,
+        pendingRole: pendingRole,
+        roleApplicationId: roleApplicationId,
         accountStatus: 'ACTIVE',
         emailVerified: false,
         createdAt: serverTimestamp(),
@@ -260,6 +281,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             fullName: fullName.trim(),
             phoneNumber: cleanPhone,
             role: role,
+            pendingRole: pendingRole,
+            roleApplicationId: roleApplicationId,
             updatedAt: serverTimestamp(),
           });
         } else {
@@ -277,6 +300,54 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             console.warn('Admins collection entry notice:', adminErr);
           }
         }
+
+        // If user selected an elevated specialization during registration, create the review application
+        if (pendingRole && roleApplicationId) {
+          try {
+            const roleAppPayload = {
+              applicationId: roleApplicationId,
+              userId: newUser.uid,
+              userEmail: cleanEmail,
+              userName: fullName.trim(),
+              currentRole: 'CUSTOMER',
+              targetRole: pendingRole,
+              status: 'PENDING_REVIEW',
+              reason: `Requested ${pendingRole.toLowerCase()} role during account creation.`,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            };
+            await setDoc(doc(db, 'roleApplications', roleApplicationId), roleAppPayload);
+
+            if (pendingRole === 'EXPERT') {
+              await setDoc(doc(db, 'expertApplications', newUser.uid), {
+                applicationId: newUser.uid,
+                userId: newUser.uid,
+                fullName: fullName.trim(),
+                email: cleanEmail,
+                status: 'PENDING_REVIEW',
+                submittedAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+              });
+            } else if (pendingRole === 'AFFILIATE') {
+              await setDoc(doc(db, 'affiliateApplications', roleApplicationId), {
+                applicationId: roleApplicationId,
+                userId: newUser.uid,
+                fullName: fullName.trim(),
+                email: cleanEmail,
+                phone: cleanPhone,
+                status: 'PENDING_REVIEW',
+                promotionChannels: ['Registration self-selection'],
+                audienceDescription: 'New platform member registration',
+                promotionalExperience: 'Initial onboard',
+                preferredCategories: ['All'],
+                createdAt: now,
+                updatedAt: now,
+              });
+            }
+          } catch (appErr) {
+            console.warn('Role application creation warning:', appErr);
+          }
+        }
       } catch (err) {
         handleFirestoreError(err, OperationType.WRITE, `users/${newUser.uid}`);
       }
@@ -289,6 +360,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         phoneNumber: cleanPhone,
         photoURL: '',
         role: role,
+        pendingRole: pendingRole,
+        roleApplicationId: roleApplicationId,
         accountStatus: 'ACTIVE',
         emailVerified: false,
         createdAt: new Date().toISOString(),
@@ -312,6 +385,177 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: false, error: message };
     } finally {
       isRegisteringRef.current = false;
+      setLoading(false);
+    }
+  };
+
+  // Role Selection & Multi-Role Pipeline
+  const selectRole = async (
+    targetRole: 'CUSTOMER' | 'AFFILIATE' | 'EXPERT',
+    details?: { reason?: string; portfolioUrl?: string; skills?: string[]; channels?: string[] }
+  ): Promise<{ success: boolean; status?: string; message?: string; error?: string }> => {
+    if (!user) {
+      return { success: false, error: 'You must be signed in to select or update your role.' };
+    }
+
+    if (['ADMIN', 'SUPER_ADMIN', 'STAFF'].includes(targetRole as string)) {
+      return {
+        success: false,
+        error: 'Administrative privileges cannot be self-assigned and require direct credentialing by the platform owner.',
+      };
+    }
+
+    try {
+      setLoading(true);
+      const cleanEmail = (user.email || '').trim().toLowerCase();
+      const isDefaultAdmin =
+        cleanEmail === 'nexoviratech@gmail.com' ||
+        cleanEmail === 'nexovirasupport@gmail.com';
+
+      if (isDefaultAdmin) {
+        return {
+          success: true,
+          status: 'ACTIVE',
+          message: 'System Administrator privileges active.',
+        };
+      }
+
+      // Try backend endpoint first
+      let apiHandled = false;
+      let apiMessage = '';
+      try {
+        const res = await fetch('/api/auth/select-role', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-id': user.uid,
+            'x-user-email': cleanEmail,
+          },
+          body: JSON.stringify({ role: targetRole, ...details }),
+        });
+        const text = await res.text();
+        if (text && (text.trim().startsWith('{') || text.trim().startsWith('['))) {
+          const json = JSON.parse(text);
+          if (res.ok && json.success) {
+            apiHandled = true;
+            apiMessage = json.message || '';
+          }
+        }
+      } catch (netErr) {
+        console.warn('API role selection notice, persisting via Firestore:', netErr);
+      }
+
+      const userDocRef = doc(db, 'users', user.uid);
+      const now = new Date().toISOString();
+
+      if (targetRole === 'CUSTOMER') {
+        // Immediate switch to Customer role
+        await updateDoc(userDocRef, {
+          role: 'CUSTOMER',
+          pendingRole: null,
+          roleApplicationId: null,
+          updatedAt: serverTimestamp(),
+        });
+
+        setProfile((prev) =>
+          prev
+            ? {
+                ...prev,
+                role: 'CUSTOMER',
+                pendingRole: null,
+                roleApplicationId: null,
+                updatedAt: now,
+              }
+            : null
+        );
+
+        return {
+          success: true,
+          status: 'ACTIVE',
+          message: apiMessage || 'Your account role is now set to Customer.',
+        };
+      } else {
+        // Elevated role application (AFFILIATE or EXPERT)
+        const appId = `roleapp_${user.uid}_${targetRole.toLowerCase()}`;
+        const appData = {
+          applicationId: appId,
+          userId: user.uid,
+          userEmail: cleanEmail,
+          userName: profile?.fullName || user.displayName || 'Member',
+          currentRole: profile?.role || 'CUSTOMER',
+          targetRole,
+          status: 'PENDING_REVIEW',
+          reason: details?.reason || `Requested ${targetRole.toLowerCase()} role from role selection console.`,
+          skills: details?.skills || [],
+          portfolioUrl: details?.portfolioUrl || '',
+          socialChannels: details?.channels || [],
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        };
+
+        await setDoc(doc(db, 'roleApplications', appId), appData);
+
+        if (targetRole === 'EXPERT') {
+          await setDoc(doc(db, 'expertApplications', user.uid), {
+            applicationId: user.uid,
+            userId: user.uid,
+            fullName: profile?.fullName || user.displayName || '',
+            email: cleanEmail,
+            status: 'PENDING_REVIEW',
+            skills: details?.skills || [],
+            portfolioUrl: details?.portfolioUrl || '',
+            submittedAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        } else if (targetRole === 'AFFILIATE') {
+          await setDoc(doc(db, 'affiliateApplications', appId), {
+            applicationId: appId,
+            userId: user.uid,
+            fullName: profile?.fullName || user.displayName || '',
+            email: cleanEmail,
+            phone: profile?.phoneNumber || '',
+            status: 'PENDING_REVIEW',
+            promotionChannels: details?.channels || ['Website', 'Social Media'],
+            audienceDescription: details?.reason || 'Nexovira Partner Applicant',
+            promotionalExperience: 'Applied through role selector',
+            preferredCategories: ['All'],
+            createdAt: now,
+            updatedAt: now,
+          });
+        }
+
+        await updateDoc(userDocRef, {
+          pendingRole: targetRole,
+          roleApplicationId: appId,
+          updatedAt: serverTimestamp(),
+        });
+
+        setProfile((prev) =>
+          prev
+            ? {
+                ...prev,
+                pendingRole: targetRole,
+                roleApplicationId: appId,
+                updatedAt: now,
+              }
+            : null
+        );
+
+        return {
+          success: true,
+          status: 'PENDING_REVIEW',
+          message:
+            apiMessage ||
+            `Your ${targetRole.toLowerCase()} application has been submitted and is pending review by management.`,
+        };
+      }
+    } catch (err: unknown) {
+      console.error('Role selection failed:', err);
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'Role selection failed. Please try again.',
+      };
+    } finally {
       setLoading(false);
     }
   };
@@ -611,6 +855,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         reloadCurrentUser,
         updateUserProfileData,
         changePassword,
+        selectRole,
       }}
     >
       {children}

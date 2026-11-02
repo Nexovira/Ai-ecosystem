@@ -49,12 +49,14 @@ service cloud.firestore {
 
     function isValidUserProfile(data) {
       return data.keys().hasAll(['userId', 'fullName', 'email', 'role', 'accountStatus', 'createdAt', 'updatedAt']) &&
-        data.keys().hasOnly(['userId', 'fullName', 'email', 'phoneNumber', 'photoURL', 'role', 'accountStatus', 'emailVerified', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['userId', 'fullName', 'email', 'phoneNumber', 'photoURL', 'role', 'pendingRole', 'roleApplicationId', 'accountStatus', 'emailVerified', 'createdAt', 'updatedAt']) &&
         data.userId is string && (!isSignedIn() || data.userId == request.auth.uid || isAdmin()) &&
         data.fullName is string && data.fullName.size() >= 2 && data.fullName.size() <= 100 &&
         data.email is string && data.email.size() <= 150 &&
-        data.role is string && data.role in ['CUSTOMER', 'EXPERT', 'STAFF', 'ADMIN', 'SUPER_ADMIN'] &&
+        data.role is string && data.role in ['CUSTOMER', 'AFFILIATE', 'EXPERT', 'STAFF', 'ADMIN', 'SUPER_ADMIN'] &&
         data.accountStatus is string && data.accountStatus in ['ACTIVE', 'RESTRICTED', 'SUSPENDED', 'UNDER_REVIEW', 'DISABLED'] &&
+        (!('pendingRole' in data) || data.pendingRole in ['CUSTOMER', 'AFFILIATE', 'EXPERT']) &&
+        (!('roleApplicationId' in data) || (data.roleApplicationId is string && data.roleApplicationId.size() <= 128)) &&
         (!('phoneNumber' in data) || (data.phoneNumber is string && data.phoneNumber.size() <= 25)) &&
         (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 500)) &&
         (!('emailVerified' in data) || data.emailVerified is bool);
@@ -67,23 +69,19 @@ service cloud.firestore {
 
       allow create: if isValidId(userId) && (isOwner(userId) || isAdmin() || !isSignedIn()) &&
         isValidUserProfile(incoming()) &&
-        (incoming().role == 'CUSTOMER' || isAdmin() || !isSignedIn()) &&
-        (incoming().accountStatus == 'ACTIVE' || isAdmin() || !isSignedIn()) &&
-        incoming().createdAt == request.time &&
-        incoming().updatedAt == request.time;
+        (incoming().role in ['CUSTOMER', 'AFFILIATE', 'EXPERT'] || isAdmin() || !isSignedIn()) &&
+        (incoming().accountStatus in ['ACTIVE', 'UNDER_REVIEW'] || isAdmin() || !isSignedIn());
 
       allow update: if isValidId(userId) && (isOwner(userId) || isAdmin() || !isSignedIn()) &&
         isValidUserProfile(incoming()) &&
         incoming().userId == existing().userId &&
-        incoming().createdAt == existing().createdAt &&
-        incoming().updatedAt == request.time &&
         (
           isAdmin() || !isSignedIn() ||
           (
-            incoming().role == existing().role &&
-            incoming().accountStatus == existing().accountStatus &&
+            // Allow user to self-select CUSTOMER or set a pending application
+            (incoming().role == existing().role || incoming().role == 'CUSTOMER') &&
             incoming().email == existing().email &&
-            incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'phoneNumber', 'photoURL', 'emailVerified', 'updatedAt'])
+            incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'phoneNumber', 'photoURL', 'emailVerified', 'role', 'pendingRole', 'roleApplicationId', 'updatedAt'])
           )
         );
 
@@ -332,21 +330,20 @@ service cloud.firestore {
 
     // Expert Applications
     match /expertApplications/{applicationId} {
-      allow get: if isValidId(applicationId) && isSignedIn() &&
-        (applicationId == request.auth.uid || resource == null || resource.data.userId == request.auth.uid || isAdmin());
-      allow list: if isSignedIn() && isAdmin();
+      allow get: if isValidId(applicationId) && (isOwner(applicationId) || isAdmin() || !isSignedIn() || resource == null || resource.data.userId == request.auth.uid);
+      allow list: if isAdmin() || !isSignedIn();
+      allow create: if isValidId(applicationId) && (isOwner(applicationId) || isAdmin() || !isSignedIn());
+      allow update: if isValidId(applicationId) && (isAdmin() || !isSignedIn());
+      allow delete: if isAdmin() || !isSignedIn();
+    }
 
-      allow create: if isValidId(applicationId) && isSignedIn() &&
-        (applicationId == request.auth.uid || incoming().userId == request.auth.uid) &&
-        incoming().userId == request.auth.uid &&
-        incoming().status == 'PENDING_REVIEW' &&
-        incoming().submittedAt == request.time &&
-        incoming().updatedAt == request.time;
-
-      allow update: if isValidId(applicationId) && isSignedIn() && isAdmin() &&
-        incoming().updatedAt == request.time;
-
-      allow delete: if false;
+    // Role Applications Collection (Multi-role review pipeline)
+    match /roleApplications/{appId} {
+      allow get: if isValidId(appId) && (isSignedIn() && (resource == null || resource.data.userId == request.auth.uid || isAdmin()) || !isSignedIn());
+      allow list: if isAdmin() || !isSignedIn();
+      allow create: if isValidId(appId) && (isSignedIn() && incoming().userId == request.auth.uid || !isSignedIn() || isAdmin());
+      allow update: if isValidId(appId) && (isAdmin() || !isSignedIn());
+      allow delete: if isAdmin() || !isSignedIn();
     }
 
     // Audit Logs (Restricted strictly to management oversight)

@@ -269,11 +269,9 @@ export const ExpertsDirectoryPage: React.FC = () => {
                   <div>
                     {/* Top Row: Avatar & Primary Info */}
                     <div className="flex items-start gap-4 mb-4">
-                      <img
-                        src={expert.profileImage}
-                        alt={expert.fullName}
-                        className="w-16 h-16 rounded-xl object-cover border border-[#0682F4]/40 shrink-0"
-                      />
+                      <div className="w-16 h-16 rounded-xl bg-[#01213D] border border-[#0682F4]/40 flex items-center justify-center font-bold text-2xl text-[#08E6F9] shrink-0 group-hover:border-[#08E6F9] transition-colors">
+                        {expert.fullName.charAt(0)}
+                      </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <h3 className="font-bold text-white text-base truncate">

@@ -78,21 +78,13 @@ export const ReviewCard: React.FC<ReviewCardProps> = ({
       {/* Top Row: Reviewer Info, Star Rating, Verified Badge & Date */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#0682F4]/15">
         <div className="flex items-center gap-3">
-          {review.userAvatar ? (
-            <img
-              src={review.userAvatar}
-              alt={review.userDisplayName}
-              className="w-9 h-9 rounded-full object-cover border border-[#08E6F9]/40"
-            />
-          ) : (
-            <div className="w-9 h-9 rounded-full bg-[#01213D] border border-[#0682F4]/30 flex items-center justify-center text-[#08E6F9] shrink-0 font-bold text-xs">
-              {review.isAnonymous ? (
-                <User className="w-4 h-4" />
-              ) : (
-                review.userDisplayName.charAt(0).toUpperCase()
-              )}
-            </div>
-          )}
+          <div className="w-9 h-9 rounded-full bg-[#01213D] border border-[#0682F4]/30 flex items-center justify-center text-[#08E6F9] shrink-0 font-bold text-xs">
+            {review.isAnonymous ? (
+              <User className="w-4 h-4" />
+            ) : (
+              review.userDisplayName.charAt(0).toUpperCase()
+            )}
+          </div>
 
           <div>
             <div className="flex items-center gap-2 flex-wrap">

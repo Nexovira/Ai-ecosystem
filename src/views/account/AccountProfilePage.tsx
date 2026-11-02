@@ -17,9 +17,11 @@ import {
 } from 'lucide-react';
 import { AccountLayout } from '../../components/account/AccountLayout';
 import { useAuth } from '../../context/AuthContext';
+import { useRouter } from '../../context/RouterContext';
 import { Button } from '../../components/common/Button';
 
 export const AccountProfilePage: React.FC = () => {
+  const { navigate } = useRouter();
   const { user, profile, updateUserProfileData } = useAuth();
 
   const [fullName, setFullName] = useState(profile?.fullName || user?.displayName || '');
@@ -253,13 +255,28 @@ export const AccountProfilePage: React.FC = () => {
               </div>
 
               {/* Role */}
-              <div className="p-3 rounded-xl bg-[#01213D] border border-[#0682F4]/20 space-y-1">
-                <span className="text-[10px] text-[#CCD2D9]/60 uppercase tracking-wider block">
-                  Ecosystem Security Role
-                </span>
-                <span className="text-[#08E6F9] font-bold block">
-                  {profile?.role || 'CUSTOMER'}
-                </span>
+              <div className="p-3 rounded-xl bg-[#01213D] border border-[#0682F4]/20 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-[#CCD2D9]/60 uppercase tracking-wider block">
+                    Ecosystem Security Role
+                  </span>
+                  <button
+                    onClick={() => navigate('/select-role')}
+                    className="text-[11px] text-[#08E6F9] hover:underline font-bold cursor-pointer"
+                  >
+                    Change / Apply →
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[#08E6F9] font-bold block">
+                    {profile?.role || 'CUSTOMER'}
+                  </span>
+                  {profile?.pendingRole && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-medium">
+                      Pending Review: {profile.pendingRole}
+                    </span>
+                  )}
+                </div>
                 <span className="text-[10px] text-[#CCD2D9]/60 block">
                   Roles are enforced server-authoritatively by Firebase rules.
                 </span>

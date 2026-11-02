@@ -10,13 +10,6 @@ export const TechServicesSection: React.FC = () => {
   // Top 4 core services
   const coreServices = INITIAL_SERVICE_CATEGORIES.slice(0, 4);
 
-  const serviceImages: Record<string, string> = {
-    'cat-web-development': 'https://images.unsplash.com/photo-1498050108023-c5249f4df085?q=80&w=800&auto=format&fit=crop',
-    'cat-mobile-app-development': 'https://images.unsplash.com/photo-1551650975-87deedd944c3?q=80&w=800&auto=format&fit=crop',
-    'cat-ui-ux-design': 'https://images.unsplash.com/photo-1581291518857-4e27b48ff24e?q=80&w=800&auto=format&fit=crop',
-    'cat-cloud-engineering': 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=800&auto=format&fit=crop',
-  };
-
   const serviceIcons: Record<string, React.ComponentType<{ className?: string }>> = {
     'cat-web-development': Code,
     'cat-mobile-app-development': Smartphone,
@@ -55,7 +48,6 @@ export const TechServicesSection: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {coreServices.map((service) => {
             const Icon = serviceIcons[service.id] || Code;
-            const imgUrl = serviceImages[service.id] || 'https://images.unsplash.com/photo-1498050108023-c5249f4df085?q=80&w=800&auto=format&fit=crop';
 
             return (
               <div
@@ -63,17 +55,14 @@ export const TechServicesSection: React.FC = () => {
                 onClick={() => navigate(`/services/category/${service.slug}`)}
                 className="group rounded-3xl bg-[#F7F8FA] border border-[#E8EDF2] overflow-hidden hover:border-[#028BFA] transition-all duration-300 hover:bg-white hover:shadow-xl hover:shadow-slate-200/50 flex flex-col justify-between cursor-pointer"
               >
-                {/* Visual Imagery */}
-                <div className="relative aspect-[16/10] overflow-hidden bg-slate-100">
-                  <img
-                    src={imgUrl}
-                    alt={service.name}
-                    loading="lazy"
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                  />
-                  <div className="absolute top-3 left-3 p-2 rounded-xl bg-white/95 text-[#0169FA] shadow-xs">
-                    <Icon className="w-4 h-4" />
+                {/* Visual Header - Icon and Geometric Accent (No Images) */}
+                <div className="p-6 pb-2 flex items-center justify-between">
+                  <div className="p-3.5 rounded-2xl bg-[#011B33] text-[#08E6F9] border border-[#0682F4]/30 shadow-md group-hover:bg-[#0682F4] group-hover:text-white transition-colors duration-300">
+                    <Icon className="w-6 h-6" />
                   </div>
+                  <span className="text-[11px] font-mono font-bold text-[#0169FA] bg-[#028BFA]/10 px-2.5 py-1 rounded-full">
+                    Specialty
+                  </span>
                 </div>
 
                 {/* Content */}

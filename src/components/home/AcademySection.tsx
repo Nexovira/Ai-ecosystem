@@ -45,19 +45,25 @@ export const AcademySection: React.FC = () => {
                 key={course.courseId}
                 className="group rounded-3xl bg-white border border-[#E8EDF2] overflow-hidden hover:border-[#028BFA] transition-all duration-300 hover:shadow-xl hover:shadow-slate-200/50 flex flex-col justify-between"
               >
-                {/* Course Artwork Container */}
+                {/* Course Header Surface (No External Stock Photo) */}
                 <div
                   onClick={() => navigate(`/academy/course/${course.slug}`)}
-                  className="relative aspect-[16/10] overflow-hidden bg-slate-100 cursor-pointer"
+                  className="relative h-32 bg-[#011B33] border-b border-[#0682F4]/20 p-5 flex flex-col justify-between cursor-pointer group-hover:bg-[#01213D] transition-colors"
                 >
-                  <img
-                    src={course.courseImage}
-                    alt={course.title}
-                    loading="lazy"
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                  />
-                  <div className="absolute top-3 left-3 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-white/95 text-[#14283F] shadow-xs">
-                    {course.categoryName}
+                  <div className="flex items-center justify-between">
+                    <div className="p-2.5 rounded-xl bg-[#0682F4]/20 border border-[#0682F4]/40 text-[#08E6F9]">
+                      <GraduationCap className="w-5 h-5" />
+                    </div>
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-[#0682F4]/20 border border-[#0682F4]/40 text-[#08E6F9]">
+                      {course.categoryName}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[11px] text-[#CCD2D9]/70 font-mono">
+                    <Clock className="w-3.5 h-3.5 text-[#08E6F9]" />
+                    <span>{course.duration}</span>
+                    <span>·</span>
+                    <Award className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Certificate</span>
                   </div>
                 </div>
 
@@ -75,21 +81,11 @@ export const AcademySection: React.FC = () => {
                     </p>
                   </div>
 
-                  {/* Instructor Information */}
+                  {/* Instructor Information - Monogram Initials Avatar */}
                   {course.instructorName && (
                     <div className="pt-3 border-t border-[#E8EDF2] flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-200 shrink-0">
-                        {course.instructorImage ? (
-                          <img
-                            src={course.instructorImage}
-                            alt={course.instructorName}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-[#0169FA] bg-[#0169FA]/10">
-                            <User className="w-4 h-4" />
-                          </div>
-                        )}
+                      <div className="w-8 h-8 rounded-full bg-[#011B33] text-[#08E6F9] border border-[#0682F4]/30 font-bold text-xs flex items-center justify-center shrink-0">
+                        {course.instructorName.charAt(0)}
                       </div>
                       <div className="min-w-0">
                         <div className="text-xs font-bold text-[#14283F] truncate">
