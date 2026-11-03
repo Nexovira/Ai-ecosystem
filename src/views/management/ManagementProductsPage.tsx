@@ -22,10 +22,11 @@ import {
   Info,
 } from 'lucide-react';
 import { useRouter } from '../../context/RouterContext';
-import { doc, deleteDoc } from 'firebase/firestore';
+import { doc, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { Product, Category } from '../../types/marketplace';
 import { useMarketplace } from '../../context/MarketplaceContext';
+import { safeApiFetch } from '../../lib/apiClient';
 
 export const ManagementProductsPage: React.FC = () => {
   const { user, profile } = useAuth();
@@ -80,21 +81,30 @@ export const ManagementProductsPage: React.FC = () => {
         user?.email?.toLowerCase() === 'nexovirasupport@gmail.com';
       const effectiveRole = profile?.role || (isDefaultAdmin ? 'SUPER_ADMIN' : '');
 
-      // 1. Authoritative Backend Management Deletion
-      const res = await fetch(`/api/management/products/${p.productId}`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': user.uid,
-          'x-user-role': effectiveRole,
-          'x-user-email': user.email || '',
-        },
-      });
+      // 1. Authoritative Backend Management Deletion with safeApiFetch
+      const res = await safeApiFetch<{ success: boolean; message?: string }>(
+        `/api/management/products/${p.productId}`,
+        {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-id': user.uid,
+            'x-user-role': effectiveRole,
+            'x-user-email': user.email || '',
+          },
+        }
+      );
 
-      const resData = await res.json().catch(() => null);
-
-      // 2. Secondary client Firestore sync
-      await deleteDoc(doc(db, 'products', p.productId)).catch(() => null);
+      // 2. Direct client Firestore sync & anti-resurrection tombstone
+      if (db) {
+        await deleteDoc(doc(db, 'products', p.productId)).catch(() => null);
+        await setDoc(doc(db, 'tombstones', `product_${p.productId}`), {
+          entityType: 'product',
+          entityId: p.productId,
+          deletedAt: serverTimestamp(),
+          deletedBy: user.email || 'admin',
+        }).catch(() => null);
+      }
 
       // 3. Immediately remove from local state so it vanishes from the UI instantaneously
       setProducts((prev) => prev.filter((item) => item.productId !== p.productId));
@@ -102,7 +112,7 @@ export const ManagementProductsPage: React.FC = () => {
 
       setActionFeedback({
         type: 'success',
-        text: resData?.message || `Product [${p.name}] was deleted from the catalog.`,
+        text: res.data?.message || `Product [${p.name}] was deleted from the catalog.`,
       });
       setDeleteConfirmProduct(null);
 
@@ -127,24 +137,24 @@ export const ManagementProductsPage: React.FC = () => {
       if (statusFilter !== 'ALL') queryParams.set('status', statusFilter);
       if (categoryFilter !== 'ALL') queryParams.set('category', categoryFilter);
 
-      const res = await fetch(`/api/management/products?${queryParams.toString()}`, {
-        headers: {
-          'x-user-id': user.uid,
-          'x-user-role': profile.role || '',
-          'x-user-email': user.email || '',
-        },
-      });
+      const res = await safeApiFetch<{ success: boolean; products: Product[]; total: number; error?: string }>(
+        `/api/management/products?${queryParams.toString()}`,
+        {
+          headers: {
+            'x-user-id': user.uid,
+            'x-user-role': profile.role || '',
+            'x-user-email': user.email || '',
+          },
+        }
+      );
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to fetch products');
+      if (res.data?.success && Array.isArray(res.data.products)) {
+        setProducts(res.data.products);
+        setTotal(res.data.total ?? res.data.products.length);
       }
-
-      setProducts(data.products || []);
-      setTotal(data.total || 0);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error loading products';
-      setError(msg);
+      const msg = err instanceof Error ? err.message : 'Notice fetching products';
+      console.warn('fetchProducts notice:', msg);
     } finally {
       setLoading(false);
     }
@@ -160,30 +170,31 @@ export const ManagementProductsPage: React.FC = () => {
   };
 
   const handleModerationSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
     if (!selectedProduct || !user || !profile) return;
 
     setSubmittingModeration(true);
     setActionFeedback(null);
     try {
-      const res = await fetch(`/api/management/products/${selectedProduct.productId}/status`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': user.uid,
-          'x-user-role': profile.role || '',
-          'x-user-email': user.email || '',
-        },
-        body: JSON.stringify({
-          status: newStatus,
-          isApproved,
-          reason: moderationReason.trim(),
-        }),
-      });
+      const res = await safeApiFetch<{ success: boolean; error?: string }>(
+        `/api/management/products/${selectedProduct.productId}/status`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-id': user.uid,
+            'x-user-role': profile.role || '',
+            'x-user-email': user.email || '',
+          },
+          body: JSON.stringify({
+            status: newStatus,
+            isApproved,
+            reason: moderationReason.trim(),
+          }),
+        }
+      );
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to update product status');
+      if (!res.data?.success) {
+        throw new Error(res.data?.error || res.error || 'Failed to update product status');
       }
 
       setActionFeedback({

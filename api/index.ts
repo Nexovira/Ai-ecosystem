@@ -3,20 +3,50 @@ import { appPromise } from '../server';
 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   try {
-    // In Vercel serverless functions, identify the authoritative requested path
-    const invokePath =
-      (req.headers['x-invoke-path'] as string) ||
-      (req.headers['x-forwarded-uri'] as string) ||
-      (req.headers['x-original-uri'] as string);
+    const rawUrl = req.url || '/';
 
-    if (invokePath && invokePath !== '/api' && invokePath !== '/api/') {
-      req.url = invokePath;
-    } else {
-      const matchedPath = req.headers['x-matched-path'] as string;
-      if (matchedPath && matchedPath !== '/api' && matchedPath !== '/api/' && req.url !== matchedPath) {
-        req.url = matchedPath;
+    // 1. Check if Vercel passed __path rewrite query parameter
+    let targetPath = '';
+    let queryString = '';
+
+    if (rawUrl.includes('?')) {
+      const parts = rawUrl.split('?');
+      const searchParams = new URLSearchParams(parts[1]);
+      const pathParam = searchParams.get('__path');
+      if (pathParam) {
+        targetPath = `/api/${pathParam.replace(/^\/+/, '')}`;
+        searchParams.delete('__path');
+        const remainingQuery = searchParams.toString();
+        queryString = remainingQuery ? `?${remainingQuery}` : '';
       }
     }
+
+    // 2. Check Vercel routing headers if __path wasn't extracted
+    if (!targetPath) {
+      const invokePath =
+        (req.headers['x-invoke-path'] as string) ||
+        (req.headers['x-forwarded-uri'] as string) ||
+        (req.headers['x-original-uri'] as string);
+
+      if (invokePath && invokePath !== '/api' && invokePath !== '/api/') {
+        targetPath = invokePath;
+      } else {
+        const matchedPath = req.headers['x-matched-path'] as string;
+        if (matchedPath && matchedPath !== '/api' && matchedPath !== '/api/' && req.url !== matchedPath) {
+          targetPath = matchedPath;
+        }
+      }
+    }
+
+    // 3. Fallback to rawUrl if it already includes /api/...
+    if (!targetPath) {
+      targetPath = rawUrl.split('?')[0];
+      if (!queryString && rawUrl.includes('?')) {
+        queryString = '?' + rawUrl.split('?').slice(1).join('?');
+      }
+    }
+
+    req.url = targetPath + queryString;
 
     const app = await appPromise;
     return app(req, res);

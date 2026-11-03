@@ -36,12 +36,6 @@ class NotificationService {
     if (this.initialized) return;
     this.initialized = true;
 
-    // In server runtime without an authenticated client user session,
-    // operate authoritatively in memory to comply with security rules
-    if (!auth || !auth.currentUser) {
-      return;
-    }
-
     try {
       const snap = await getDocs(
         query(collection(db, 'notifications'), firestoreLimit(200))
@@ -93,7 +87,7 @@ class NotificationService {
       return this.preferencesCache.get(userId)!;
     }
 
-    if (auth && auth.currentUser) {
+    if (db) {
       try {
         const docRef = doc(db, 'userNotificationPreferences', userId);
         const snap = await getDoc(docRef).catch(() => null);
@@ -145,7 +139,7 @@ class NotificationService {
 
     this.preferencesCache.set(userId, updated);
 
-    if (auth && auth.currentUser) {
+    if (db) {
       try {
         const docRef = doc(db, 'userNotificationPreferences', userId);
         await setDoc(docRef, updated, { merge: true }).catch(() => null);
@@ -246,7 +240,7 @@ class NotificationService {
     this.notificationsCache.set(id, record);
 
     // Save to Firestore if authenticated (retained in-memory if unauthenticated or offline)
-    if (auth && auth.currentUser) {
+    if (db) {
       try {
         const docRef = doc(db, 'notifications', id);
         await setDoc(docRef, record).catch(() => null);
@@ -367,7 +361,7 @@ class NotificationService {
     item.readAt = now;
     this.notificationsCache.set(notificationId, item);
 
-    if (auth && auth.currentUser) {
+    if (db) {
       try {
         const docRef = doc(db, 'notifications', notificationId);
         await updateDoc(docRef, {
@@ -400,7 +394,7 @@ class NotificationService {
         updatedCount++;
 
         // Update in firestore if authenticated
-        if (auth && auth.currentUser) {
+        if (db) {
           updateDoc(doc(db, 'notifications', id), {
             readStatus: 'READ',
             readAt: now,

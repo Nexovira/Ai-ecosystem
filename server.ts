@@ -2297,7 +2297,8 @@ Respond with a strictly valid JSON object matching this schema:
    * GET /api/search
    * Unified multi-entity search endpoint with relevance ranking, filters, and pagination.
    */
-  app.get('/api/search', async (req: Request, res: Response) => {
+  app.get(['/api/search', '/search'], async (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
     try {
       const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
       if (!checkSearchRateLimit(clientIp)) {
@@ -2337,7 +2338,8 @@ Respond with a strictly valid JSON object matching this schema:
    * GET /api/search/suggestions
    * High-speed autocomplete suggestions for global search input.
    */
-  app.get('/api/search/suggestions', async (req: Request, res: Response) => {
+  app.get(['/api/search/suggestions', '/search/suggestions'], async (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
     try {
       const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
       if (!checkSearchRateLimit(clientIp)) {
@@ -2980,7 +2982,8 @@ Respond with a strictly valid JSON object matching this schema:
    * GET /api/management/products
    * List all products in marketplace for management.
    */
-  app.get('/api/management/products', async (req: Request, res: Response) => {
+  app.get(['/api/management/products', '/management/products'], async (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
     try {
       const authResult = requireManagementAuth(req, res, 'PRODUCTS_VIEW');
       if (!authResult) return;
@@ -3017,10 +3020,80 @@ Respond with a strictly valid JSON object matching this schema:
   });
 
   /**
+   * POST /api/management/products
+   * Create or update a marketplace catalog product with Firestore persistence.
+   */
+  app.post(['/api/management/products', '/management/products'], async (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
+    try {
+      const authResult = requireManagementAuth(req, res, 'PRODUCTS_APPROVE');
+      if (!authResult) return;
+
+      const product = await commerceService.saveProductByManagement(req.body, authResult.userId);
+
+      // Audit log
+      await managementService.recordAuditLog({
+        actorId: authResult.userId,
+        actorEmail: authResult.userEmail,
+        actorRole: authResult.userRole,
+        action: 'PRODUCT_CREATE_SAVE',
+        targetType: 'PRODUCT',
+        targetId: product.productId,
+        newState: { name: product.name, status: product.productStatus, price: product.price },
+        reason: req.body?.reason || 'Administrator saved marketplace product',
+      });
+
+      // Warm search index in background so product is immediately discoverable
+      searchService.warmIndex().catch(() => null);
+
+      return res.status(201).json({ success: true, product });
+    } catch (err: unknown) {
+      console.error('Error creating/saving product via management:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to save product';
+      return res.status(400).json({ success: false, error: msg });
+    }
+  });
+
+  /**
+   * PUT /api/management/products/:productId
+   * Update existing marketplace product details.
+   */
+  app.put(['/api/management/products/:productId', '/management/products/:productId'], async (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
+    try {
+      const authResult = requireManagementAuth(req, res, 'PRODUCTS_APPROVE');
+      if (!authResult) return;
+
+      const { productId } = req.params;
+      const product = await commerceService.saveProductByManagement({ ...req.body, productId }, authResult.userId);
+
+      await managementService.recordAuditLog({
+        actorId: authResult.userId,
+        actorEmail: authResult.userEmail,
+        actorRole: authResult.userRole,
+        action: 'PRODUCT_UPDATE',
+        targetType: 'PRODUCT',
+        targetId: productId,
+        newState: { name: product.name, price: product.price, status: product.productStatus },
+        reason: req.body?.reason || 'Administrator updated product details',
+      });
+
+      searchService.warmIndex().catch(() => null);
+
+      return res.json({ success: true, product });
+    } catch (err: unknown) {
+      console.error('Error updating product via management:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to update product';
+      return res.status(400).json({ success: false, error: msg });
+    }
+  });
+
+  /**
    * POST /api/management/products/:productId/status
    * Update product approval or publication status.
    */
-  app.post('/api/management/products/:productId/status', async (req: Request, res: Response) => {
+  app.post(['/api/management/products/:productId/status', '/management/products/:productId/status'], async (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
     try {
       const authResult = requireManagementAuth(req, res, 'PRODUCTS_APPROVE');
       if (!authResult) return;
@@ -3047,6 +3120,8 @@ Respond with a strictly valid JSON object matching this schema:
         reason,
       });
 
+      searchService.warmIndex().catch(() => null);
+
       return res.json({ success: true, product: updated });
     } catch (err: unknown) {
       console.error('Error updating product status:', err);
@@ -3058,7 +3133,8 @@ Respond with a strictly valid JSON object matching this schema:
    * DELETE /api/management/products/:productId
    * Delete or archive a product from the marketplace catalog by management.
    */
-  app.delete('/api/management/products/:productId', async (req: Request, res: Response) => {
+  app.delete(['/api/management/products/:productId', '/management/products/:productId'], async (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
     try {
       const authResult = requireManagementAuth(req, res, 'PRODUCTS_APPROVE');
       if (!authResult) return;
@@ -3078,6 +3154,8 @@ Respond with a strictly valid JSON object matching this schema:
         reason: req.body?.reason || 'Administrator deleted product from catalog',
       });
 
+      searchService.warmIndex().catch(() => null);
+
       return res.json(result);
     } catch (err: unknown) {
       console.error('Error deleting product:', err);
@@ -3090,7 +3168,8 @@ Respond with a strictly valid JSON object matching this schema:
    * GET /api/management/categories
    * Retrieve all marketplace categories for management desk.
    */
-  app.get('/api/management/categories', async (req: Request, res: Response) => {
+  app.get(['/api/management/categories', '/management/categories'], async (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
     try {
       const authResult = requireManagementAuth(req, res, 'PRODUCTS_VIEW');
       if (!authResult) return;
@@ -3107,7 +3186,8 @@ Respond with a strictly valid JSON object matching this schema:
    * POST /api/management/categories
    * Create or update marketplace category.
    */
-  app.post('/api/management/categories', async (req: Request, res: Response) => {
+  app.post(['/api/management/categories', '/management/categories'], async (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
     try {
       const authResult = requireManagementAuth(req, res, 'PRODUCTS_APPROVE');
       if (!authResult) return;
@@ -3130,6 +3210,8 @@ Respond with a strictly valid JSON object matching this schema:
         reason: req.body.reason || 'Marketplace category updated/created via management desk',
       });
 
+      searchService.warmIndex().catch(() => null);
+
       return res.json({ success: true, category });
     } catch (err: unknown) {
       console.error('Error saving marketplace category:', err);
@@ -3142,7 +3224,8 @@ Respond with a strictly valid JSON object matching this schema:
    * DELETE /api/management/categories/:categoryId
    * Delete marketplace category with dependency check against products catalog.
    */
-  app.delete('/api/management/categories/:categoryId', async (req: Request, res: Response) => {
+  app.delete(['/api/management/categories/:categoryId', '/management/categories/:categoryId'], async (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
     try {
       const authResult = requireManagementAuth(req, res, 'PRODUCTS_APPROVE');
       if (!authResult) return;
@@ -4172,7 +4255,8 @@ Respond with a strictly valid JSON object matching this schema:
    * GET /api/management/digital-products
    * Management listing of all digital publications with filter & search.
    */
-  app.get('/api/management/digital-products', async (req: Request, res: Response) => {
+  app.get(['/api/management/digital-products', '/management/digital-products'], async (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
     try {
       const authResult = requireManagementAuth(req, res, 'DIGITAL_PRODUCTS_VIEW');
       if (!authResult) return;
@@ -4198,7 +4282,8 @@ Respond with a strictly valid JSON object matching this schema:
    * POST /api/management/digital-products/:productId/status
    * Management status moderation (PUBLISHED, REJECTED, UNPUBLISHED, ARCHIVED).
    */
-  app.post('/api/management/digital-products/:productId/status', async (req: Request, res: Response) => {
+  app.post(['/api/management/digital-products/:productId/status', '/management/digital-products/:productId/status'], async (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
     try {
       const authResult = requireManagementAuth(req, res, 'DIGITAL_PRODUCTS_MANAGE');
       if (!authResult) return;
@@ -4219,6 +4304,8 @@ Respond with a strictly valid JSON object matching this schema:
         authResult.userRole
       );
 
+      searchService.warmIndex().catch(() => null);
+
       return res.json({ success: true, product: updated });
     } catch (err: unknown) {
       console.error('Error moderating digital product:', err);
@@ -4231,7 +4318,8 @@ Respond with a strictly valid JSON object matching this schema:
    * GET /api/management/digital-products/reports
    * List customer reports on digital publications.
    */
-  app.get('/api/management/digital-products/reports', async (req: Request, res: Response) => {
+  app.get(['/api/management/digital-products/reports', '/management/digital-products/reports'], async (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
     try {
       const authResult = requireManagementAuth(req, res, 'DIGITAL_PRODUCTS_VIEW');
       if (!authResult) return;
@@ -4248,7 +4336,8 @@ Respond with a strictly valid JSON object matching this schema:
    * POST /api/management/digital-products
    * Create digital product directly from management desk.
    */
-  app.post('/api/management/digital-products', async (req: Request, res: Response) => {
+  app.post(['/api/management/digital-products', '/management/digital-products'], async (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
     try {
       const authResult = requireManagementAuth(req, res, 'DIGITAL_PRODUCTS_MANAGE');
       if (!authResult) return;
@@ -4259,6 +4348,8 @@ Respond with a strictly valid JSON object matching this schema:
         'MANAGEMENT',
         req.body
       );
+
+      searchService.warmIndex().catch(() => null);
 
       return res.status(201).json({ success: true, product });
     } catch (err: unknown) {
@@ -4272,7 +4363,8 @@ Respond with a strictly valid JSON object matching this schema:
    * PUT /api/management/digital-products/:productId
    * Update digital product fields from management desk.
    */
-  app.put('/api/management/digital-products/:productId', async (req: Request, res: Response) => {
+  app.put(['/api/management/digital-products/:productId', '/management/digital-products/:productId'], async (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
     try {
       const authResult = requireManagementAuth(req, res, 'DIGITAL_PRODUCTS_MANAGE');
       if (!authResult) return;
@@ -4284,6 +4376,8 @@ Respond with a strictly valid JSON object matching this schema:
         req.body,
         true
       );
+
+      searchService.warmIndex().catch(() => null);
 
       return res.json({ success: true, product: updated });
     } catch (err: unknown) {
@@ -4297,7 +4391,8 @@ Respond with a strictly valid JSON object matching this schema:
    * DELETE /api/management/digital-products/:productId
    * Delete or archive digital product from management desk.
    */
-  app.delete('/api/management/digital-products/:productId', async (req: Request, res: Response) => {
+  app.delete(['/api/management/digital-products/:productId', '/management/digital-products/:productId'], async (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
     try {
       const authResult = requireManagementAuth(req, res, 'DIGITAL_PRODUCTS_MANAGE');
       if (!authResult) return;
@@ -4312,6 +4407,8 @@ Respond with a strictly valid JSON object matching this schema:
         permanent
       );
 
+      searchService.warmIndex().catch(() => null);
+
       return res.json(result);
     } catch (err: unknown) {
       console.error('Error deleting digital product via management:', err);
@@ -4324,7 +4421,8 @@ Respond with a strictly valid JSON object matching this schema:
    * GET /api/management/digital-products/categories
    * List all digital product categories for management.
    */
-  app.get('/api/management/digital-products/categories', async (req: Request, res: Response) => {
+  app.get(['/api/management/digital-products/categories', '/management/digital-products/categories'], async (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
     try {
       const authResult = requireManagementAuth(req, res, 'DIGITAL_PRODUCTS_VIEW');
       if (!authResult) return;
@@ -4341,12 +4439,14 @@ Respond with a strictly valid JSON object matching this schema:
    * POST /api/management/digital-products/categories
    * Create or update digital product category.
    */
-  app.post('/api/management/digital-products/categories', async (req: Request, res: Response) => {
+  app.post(['/api/management/digital-products/categories', '/management/digital-products/categories'], async (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
     try {
       const authResult = requireManagementAuth(req, res, 'DIGITAL_PRODUCTS_MANAGE');
       if (!authResult) return;
 
       const category = await digitalProductService.saveCategory(req.body, true);
+      searchService.warmIndex().catch(() => null);
       return res.json({ success: true, category });
     } catch (err: unknown) {
       console.error('Error saving digital product category:', err);
@@ -4359,13 +4459,15 @@ Respond with a strictly valid JSON object matching this schema:
    * DELETE /api/management/digital-products/categories/:categoryId
    * Delete or deactivate digital product category.
    */
-  app.delete('/api/management/digital-products/categories/:categoryId', async (req: Request, res: Response) => {
+  app.delete(['/api/management/digital-products/categories/:categoryId', '/management/digital-products/categories/:categoryId'], async (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
     try {
       const authResult = requireManagementAuth(req, res, 'DIGITAL_PRODUCTS_MANAGE');
       if (!authResult) return;
 
       const { categoryId } = req.params;
       const result = await digitalProductService.deleteCategory(categoryId, true);
+      searchService.warmIndex().catch(() => null);
       return res.json(result);
     } catch (err: unknown) {
       console.error('Error deleting digital product category:', err);

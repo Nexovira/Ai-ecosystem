@@ -696,7 +696,7 @@ class AffiliateService {
     this.clicks.set(referralId, clickEvent);
     affiliate.totalClicks = (affiliate.totalClicks || 0) + 1;
 
-    if (auth && auth.currentUser) {
+    if (db) {
       try {
         await setDoc(doc(db, 'referralClicks', referralId), clickEvent).catch(() => null);
         await updateDoc(doc(db, 'affiliateProfiles', affiliate.affiliateId), {
@@ -793,7 +793,7 @@ class AffiliateService {
     this.commissions.set(commissionId, commission);
     affiliate.totalConversions = (affiliate.totalConversions || 0) + 1;
 
-    if (auth && auth.currentUser) {
+    if (db) {
       try {
         await setDoc(doc(db, 'affiliateCommissions', commissionId), commission).catch(() => null);
         await updateDoc(doc(db, 'affiliateProfiles', affiliate.affiliateId), {
@@ -919,7 +919,7 @@ class AffiliateService {
     this.commissions.set(commissionId, commission);
     affiliate.totalConversions = (affiliate.totalConversions || 0) + 1;
 
-    if (auth && auth.currentUser) {
+    if (db) {
       try {
         await setDoc(doc(db, 'affiliateCommissions', commissionId), commission).catch(() => null);
         await updateDoc(doc(db, 'affiliateProfiles', affiliate.affiliateId), {
@@ -1009,7 +1009,7 @@ class AffiliateService {
       comm.internalNotes = params.internalNotes;
     }
 
-    if (auth && auth.currentUser) {
+    if (db) {
       try {
         await updateDoc(doc(db, 'affiliateCommissions', comm.commissionId), {
           status: comm.status,
@@ -1473,7 +1473,7 @@ class AffiliateService {
     affiliate.payoutProfile = payoutProfile;
     affiliate.updatedAt = new Date().toISOString();
 
-    if (auth && auth.currentUser) {
+    if (db) {
       try {
         await updateDoc(doc(db, 'affiliateProfiles', affiliate.affiliateId), {
           payoutProfile,
@@ -1564,7 +1564,7 @@ class AffiliateService {
 
     this.payouts.set(payoutId, payout);
 
-    if (auth && auth.currentUser) {
+    if (db) {
       try {
         await setDoc(doc(db, 'affiliatePayouts', payoutId), payout).catch(() => null);
       } catch {
@@ -1650,7 +1650,7 @@ class AffiliateService {
     aff.status = status;
     aff.updatedAt = new Date().toISOString();
 
-    if (auth && auth.currentUser) {
+    if (db) {
       try {
         await updateDoc(doc(db, 'affiliateProfiles', aff.affiliateId), {
           status: aff.status,
@@ -1724,7 +1724,7 @@ class AffiliateService {
       }
     }
 
-    if (auth && auth.currentUser) {
+    if (db) {
       try {
         await updateDoc(doc(db, 'affiliatePayouts', payout.payoutId), {
           status: payout.status,

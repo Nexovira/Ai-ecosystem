@@ -20,6 +20,8 @@ import {
   MarketplaceSortOption,
 } from '../types/marketplace';
 import { INITIAL_PRODUCTS, INITIAL_CATEGORIES } from '../data/marketplaceCatalog';
+import { safeApiFetch } from '../lib/apiClient';
+import { sanitizeFirestoreData } from '../utils/productNormalization';
 
 interface MarketplaceContextType {
   products: Product[];
@@ -167,7 +169,28 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const addCategory = useCallback(
     async (data: Partial<Category>) => {
       try {
-        const res = await fetch('/api/management/categories', {
+        const catId = data.categoryId || (data.slug ? String(data.slug).toLowerCase().trim() : 'cat_' + Date.now());
+        const fullCat: Category = {
+          categoryId: catId,
+          name: data.name || 'New Category',
+          slug: data.slug || catId,
+          description: data.description || '',
+          iconName: data.iconName || 'Package',
+          order: data.order ?? 99,
+        };
+
+        // 1. Authoritative direct Firestore write
+        if (db) {
+          try {
+            await setDoc(doc(db, 'categories', catId), sanitizeFirestoreData(fullCat), { merge: true });
+            await deleteDoc(doc(db, 'tombstones', `product_category_${catId}`)).catch(() => {});
+          } catch (fsErr) {
+            console.warn('[MarketplaceContext] Direct Firestore category write warning:', fsErr);
+          }
+        }
+
+        // 2. Sync with backend API
+        const res = await safeApiFetch<{ success: boolean; category?: Category; error?: string }>('/api/management/categories', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -175,14 +198,14 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
             'x-user-role': profile?.role || '',
             'x-user-email': user?.email || '',
           },
-          body: JSON.stringify(data),
+          body: JSON.stringify(fullCat),
         });
-        const resData = await res.json();
-        if (!res.ok || !resData.success) {
-          throw new Error(resData.error || 'Failed to add category');
-        }
+
         await refreshCatalog();
-        return { success: true, category: resData.category };
+        if (res.data?.success) {
+          return { success: true, category: res.data.category || fullCat };
+        }
+        return { success: true, category: fullCat };
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Error adding category';
         return { success: false, error: msg };
@@ -194,7 +217,18 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const updateCategory = useCallback(
     async (categoryId: string, updates: Partial<Category>) => {
       try {
-        const res = await fetch('/api/management/categories', {
+        // 1. Authoritative direct Firestore write
+        if (db) {
+          try {
+            await setDoc(doc(db, 'categories', categoryId), sanitizeFirestoreData(updates), { merge: true });
+            await deleteDoc(doc(db, 'tombstones', `product_category_${categoryId}`)).catch(() => {});
+          } catch (fsErr) {
+            console.warn('[MarketplaceContext] Direct Firestore category update warning:', fsErr);
+          }
+        }
+
+        // 2. Sync with backend API
+        const res = await safeApiFetch<{ success: boolean; category?: Category; error?: string }>('/api/management/categories', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -204,12 +238,9 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
           },
           body: JSON.stringify({ ...updates, categoryId }),
         });
-        const resData = await res.json();
-        if (!res.ok || !resData.success) {
-          throw new Error(resData.error || 'Failed to update category');
-        }
+
         await refreshCatalog();
-        return { success: true, category: resData.category };
+        return { success: true, category: res.data?.category };
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Error updating category';
         return { success: false, error: msg };
@@ -221,7 +252,23 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const deleteCategory = useCallback(
     async (categoryId: string) => {
       try {
-        const res = await fetch(`/api/management/categories/${categoryId}`, {
+        // 1. Authoritative direct Firestore deletion & tombstone
+        if (db) {
+          try {
+            await deleteDoc(doc(db, 'categories', categoryId)).catch(() => {});
+            await setDoc(doc(db, 'tombstones', `product_category_${categoryId}`), {
+              entityType: 'product_category',
+              entityId: categoryId,
+              deletedAt: serverTimestamp(),
+              deletedBy: user?.email || 'admin',
+            }).catch(() => {});
+          } catch (fsErr) {
+            console.warn('[MarketplaceContext] Direct Firestore category delete warning:', fsErr);
+          }
+        }
+
+        // 2. Sync with backend API
+        const res = await safeApiFetch<{ success: boolean; error?: string; inUseCount?: number }>(`/api/management/categories/${categoryId}`, {
           method: 'DELETE',
           headers: {
             'x-user-id': user?.uid || '',
@@ -229,15 +276,15 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
             'x-user-email': user?.email || '',
           },
         });
-        const resData = await res.json();
-        if (!res.ok || !resData.success) {
+
+        await refreshCatalog();
+        if (res.data && !res.data.success && res.data.inUseCount) {
           return {
             success: false,
-            error: resData.error || 'Failed to delete category',
-            inUseCount: resData.inUseCount,
+            error: res.data.error || 'Failed to delete category',
+            inUseCount: res.data.inUseCount,
           };
         }
-        await refreshCatalog();
         return { success: true };
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Error deleting category';

@@ -14,6 +14,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { AutocompleteSuggestion } from '../../types/search';
+import { safeApiFetch } from '../../lib/apiClient';
 
 interface GlobalSearchBarProps {
   initialQuery?: string;
@@ -107,10 +108,11 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
     setIsLoading(true);
     debounceTimerRef.current = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/search/suggestions?q=${encodeURIComponent(trimmed)}`);
-        if (res.ok) {
-          const data = await res.json();
-          setSuggestions(data.suggestions || []);
+        const res = await safeApiFetch<{ success: boolean; suggestions: AutocompleteSuggestion[] }>(
+          `/api/search/suggestions?q=${encodeURIComponent(trimmed)}`
+        );
+        if (res.data?.suggestions) {
+          setSuggestions(res.data.suggestions);
         }
       } catch (err) {
         console.warn('Error fetching autocomplete suggestions:', err);

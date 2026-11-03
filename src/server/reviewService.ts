@@ -70,11 +70,6 @@ export class ReviewService {
     if (this.isInitialized) return;
     this.isInitialized = true;
 
-    if (!auth || !auth.currentUser) {
-      // Server runs in memory-authoritative mode without active client session
-      return;
-    }
-
     try {
       if (db) {
         // Load reviews from Firestore
@@ -483,7 +478,7 @@ export class ReviewService {
     this.reviewsCache.unshift(review);
 
     // Save to Firestore if authenticated
-    if (db && auth && auth.currentUser) {
+    if (db) {
       try {
         await setDoc(doc(db, 'reviews', reviewId), review).catch(() => null);
       } catch {
@@ -592,7 +587,7 @@ export class ReviewService {
     review.updatedAt = now;
 
     // Update Firestore
-    if (db && auth && auth.currentUser) {
+    if (db) {
       try {
         await updateDoc(doc(db, 'reviews', reviewId), {
           rating: review.rating,
@@ -632,7 +627,7 @@ export class ReviewService {
     review.status = 'REMOVED';
     review.updatedAt = now;
 
-    if (db && auth && auth.currentUser) {
+    if (db) {
       try {
         await updateDoc(doc(db, 'reviews', reviewId), {
           status: 'REMOVED',
@@ -836,7 +831,7 @@ export class ReviewService {
       review.status = 'REPORTED';
     }
 
-    if (db && auth && auth.currentUser) {
+    if (db) {
       try {
         await setDoc(doc(db, 'reviewReports', reportId), report).catch(() => null);
         await updateDoc(doc(db, 'reviews', reviewId), {
@@ -895,7 +890,7 @@ export class ReviewService {
     };
     review.updatedAt = now;
 
-    if (db && auth && auth.currentUser) {
+    if (db) {
       try {
         await updateDoc(doc(db, 'reviews', reviewId), {
           response: review.response,
@@ -995,7 +990,7 @@ export class ReviewService {
     review.status = newStatus;
     review.updatedAt = now;
 
-    if (db && auth && auth.currentUser) {
+    if (db) {
       try {
         await updateDoc(doc(db, 'reviews', reviewId), {
           status: newStatus,
@@ -1064,7 +1059,7 @@ export class ReviewService {
     report.resolutionNote = sanitizeText(note);
     report.resolvedAt = now;
 
-    if (db && auth && auth.currentUser) {
+    if (db) {
       try {
         await updateDoc(doc(db, 'reviewReports', reportId), {
           status: resolution,

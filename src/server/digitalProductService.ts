@@ -750,7 +750,7 @@ export class DigitalProductService {
 
     this.productsCache.set(productId, product);
 
-    if (db && auth && auth.currentUser) {
+    if (db) {
       try {
         await setDoc(doc(db, 'digitalProducts', productId), sanitizeFirestoreData(product)).catch(() => null);
       } catch {
@@ -859,7 +859,7 @@ export class DigitalProductService {
 
     product.updatedAt = now;
 
-    if (db && auth && auth.currentUser) {
+    if (db) {
       try {
         await updateDoc(
           doc(db, 'digitalProducts', productId),
@@ -999,7 +999,7 @@ export class DigitalProductService {
       product.publishedAt = now;
     }
 
-    if (db && auth && auth.currentUser) {
+    if (db) {
       try {
         await updateDoc(doc(db, 'digitalProducts', productId), {
           status: newStatus,
@@ -1091,7 +1091,7 @@ export class DigitalProductService {
     // Increment sales count on product
     product.salesCount = (product.salesCount || 0) + 1;
 
-    if (db && auth && auth.currentUser) {
+    if (db) {
       try {
         await setDoc(doc(db, 'digitalEntitlements', entitlementId), entitlement).catch(() => null);
         await updateDoc(doc(db, 'digitalProducts', productId), {
@@ -1169,7 +1169,7 @@ export class DigitalProductService {
     entitlement.status = 'REVOKED';
     entitlement.revokedAt = now;
 
-    if (db && auth && auth.currentUser) {
+    if (db) {
       try {
         await updateDoc(doc(db, 'digitalEntitlements', entitlementId), {
           status: 'REVOKED',
@@ -1290,7 +1290,7 @@ export class DigitalProductService {
     };
     this.downloadLogsCache.push(log);
 
-    if (db && auth && auth.currentUser) {
+    if (db) {
       try {
         await updateDoc(doc(db, 'digitalEntitlements', entitlement.entitlementId), {
           downloadCount: entitlement.downloadCount,
@@ -1386,7 +1386,7 @@ ALL RIGHTS RESERVED. UNAUTHORIZED REDISTRIBUTION IS STRICTLY PROHIBITED.
 
     this.reportsCache.unshift(report);
 
-    if (db && auth && auth.currentUser) {
+    if (db) {
       try {
         await setDoc(doc(db, 'digitalProductReports', reportId), report).catch(() => null);
       } catch {

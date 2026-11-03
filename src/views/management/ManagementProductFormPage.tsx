@@ -29,8 +29,9 @@ import { ProductFormInput } from '../../types/seller';
 import { Product, ProductAvailability, ProductStatus } from '../../types/marketplace';
 import { CloudinaryMediaGuide } from '../../components/common/CloudinaryMediaGuide';
 import { MAX_PRODUCT_IMAGES, validateProductImageUrl } from '../../utils/imageUrlValidator';
-import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
+import { safeApiFetch } from '../../lib/apiClient';
 import {
   normalizeProductForFirestore,
   normalizeProductUpdatesForFirestore,
@@ -49,7 +50,7 @@ interface ManagementProductFormPageProps {
 
 export const ManagementProductFormPage: React.FC<ManagementProductFormPageProps> = ({ productId }) => {
   const { user, profile } = useAuth();
-  const { categories, products } = useMarketplace();
+  const { categories, products, refreshCatalog } = useMarketplace();
   const { navigate } = useRouter();
 
   const isEditing = Boolean(productId);
@@ -429,6 +430,22 @@ export const ManagementProductFormPage: React.FC<ManagementProductFormPageProps>
         updates.updatedAt = serverTimestamp();
         await updateDoc(productRef, updates);
 
+        // Clear any deletion tombstone
+        await deleteDoc(doc(db, 'tombstones', `product_${productId}`)).catch(() => {});
+
+        // Sync with backend API
+        await safeApiFetch(`/api/management/products/${productId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-id': user.uid,
+            'x-user-role': profile?.role || 'ADMIN',
+            'x-user-email': user.email || '',
+          },
+          body: JSON.stringify({ ...inputData, productId }),
+        }).catch((e) => console.warn('Backend sync warning:', e));
+
+        await refreshCatalog();
         setSuccessMessage(`Product "${name}" successfully updated.`);
         setTimeout(() => navigate('/management/products'), 1000);
       } else {
@@ -448,6 +465,22 @@ export const ManagementProductFormPage: React.FC<ManagementProductFormPageProps>
         const productRef = doc(db, 'products', newProductId);
         await setDoc(productRef, firestoreDoc);
 
+        // Clear any tombstone
+        await deleteDoc(doc(db, 'tombstones', `product_${newProductId}`)).catch(() => {});
+
+        // Sync with backend API
+        await safeApiFetch('/api/management/products', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-id': user.uid,
+            'x-user-role': profile?.role || 'ADMIN',
+            'x-user-email': user.email || '',
+          },
+          body: JSON.stringify({ ...inputData, productId: newProductId }),
+        }).catch((e) => console.warn('Backend sync warning:', e));
+
+        await refreshCatalog();
         setSuccessMessage(`Product "${name}" successfully published to the marketplace catalog.`);
         setTimeout(() => navigate('/management/products'), 1000);
       }

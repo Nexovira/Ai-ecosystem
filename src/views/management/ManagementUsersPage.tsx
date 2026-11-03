@@ -28,6 +28,7 @@ import { ManagementUserItem } from '../../types/management';
 import { AccountStatus, UserRole, RoleApplication } from '../../types/auth';
 import { collection, getDocs, doc, updateDoc, setDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
+import { safeApiFetch } from '../../lib/apiClient';
 
 export const ManagementUsersPage: React.FC = () => {
   const { user, profile } = useAuth();
@@ -237,26 +238,19 @@ export const ManagementUsersPage: React.FC = () => {
       const effectiveRole = profile.role || (isDefaultAdmin ? 'SUPER_ADMIN' : '');
 
       let loaded = false;
-      try {
-        const res = await fetch('/api/management/role-applications', {
+      const res = await safeApiFetch<{ success: boolean; applications: RoleApplication[] }>(
+        '/api/management/role-applications',
+        {
           headers: {
             'x-user-id': user.uid,
             'x-user-role': effectiveRole,
             'x-user-email': user.email || '',
           },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.success && Array.isArray(data.applications)) {
-            setRoleApplications(data.applications);
-            loaded = true;
-          }
         }
-      } catch (e) {
-        console.warn('API role applications fetch error:', e);
-      }
-
-      if (!loaded) {
+      );
+      if (res.data?.success && Array.isArray(res.data.applications)) {
+        setRoleApplications(res.data.applications);
+      } else {
         const appSnap = await getDocs(collection(db, 'roleApplications'));
         const list: RoleApplication[] = [];
         appSnap.forEach((docSnap) => {
@@ -287,10 +281,9 @@ export const ManagementUsersPage: React.FC = () => {
         user.email?.toLowerCase() === 'nexovirasupport@gmail.com';
       const effectiveRole = profile.role || (isDefaultAdmin ? 'SUPER_ADMIN' : '');
 
-      let success = false;
-      let errorMsg = '';
-      try {
-        const res = await fetch(`/api/management/role-applications/${reviewingApp.applicationId}/review`, {
+      const res = await safeApiFetch<{ success: boolean; error?: string }>(
+        `/api/management/role-applications/${reviewingApp.applicationId}/review`,
+        {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -303,29 +296,40 @@ export const ManagementUsersPage: React.FC = () => {
             rejectionReason: reviewAction === 'REJECT' ? reviewNotes : undefined,
             internalNotes: reviewNotes || `Processed by ${user.email}`,
           }),
-        });
-        const data = await res.json();
-        if (data.success) {
-          success = true;
-        } else {
-          errorMsg = data.error || 'Server rejected review operation.';
         }
-      } catch (err) {
-        errorMsg = err instanceof Error ? err.message : 'Network error';
+      );
+
+      // Direct Firestore sync
+      if (db) {
+        await setDoc(
+          doc(db, 'roleApplications', reviewingApp.applicationId),
+          {
+            status: reviewAction === 'APPROVE' ? 'APPROVED' : 'REJECTED',
+            reviewedAt: new Date().toISOString(),
+            reviewerId: user.uid,
+            reviewerEmail: user.email,
+            rejectionReason: reviewAction === 'REJECT' ? reviewNotes : null,
+          },
+          { merge: true }
+        ).catch(() => {});
+
+        if (reviewAction === 'APPROVE' && reviewingApp.userId && reviewingApp.targetRole) {
+          await updateDoc(doc(db, 'users', reviewingApp.userId), {
+            role: reviewingApp.targetRole,
+            pendingRole: null,
+            updatedAt: new Date().toISOString(),
+          }).catch(() => {});
+        }
       }
 
-      if (success) {
-        setActionFeedback({
-          type: 'success',
-          text: `Application for ${reviewingApp.userName || reviewingApp.userEmail} was ${reviewAction === 'APPROVE' ? 'APPROVED' : 'REJECTED'} successfully.`,
-        });
-        setReviewingApp(null);
-        setReviewNotes('');
-        fetchRoleApplications();
-        fetchUsers();
-      } else {
-        setActionFeedback({ type: 'error', text: errorMsg || 'Failed to review role application.' });
-      }
+      setActionFeedback({
+        type: 'success',
+        text: `Application for ${reviewingApp.userName || reviewingApp.userEmail} was ${reviewAction === 'APPROVE' ? 'APPROVED' : 'REJECTED'} successfully.`,
+      });
+      setReviewingApp(null);
+      setReviewNotes('');
+      fetchRoleApplications();
+      fetchUsers();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Review submission error';
       setActionFeedback({ type: 'error', text: msg });
@@ -360,31 +364,27 @@ export const ManagementUsersPage: React.FC = () => {
     let apiErrorMessage = '';
 
     try {
-      const res = await fetch(`/api/management/users/${selectedUserForStatus.userId}/status`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': user.uid,
-          'x-user-role': effectiveRole,
-          'x-user-email': user.email || '',
-        },
-        body: JSON.stringify({
-          status: newStatus,
-          reason: statusReason.trim(),
-        }),
-      });
-
-      const contentType = res.headers.get('content-type') || '';
-      if (contentType.includes('application/json')) {
-        const data = await res.json();
-        if (res.ok && data.success) {
-          updatedViaApi = true;
-        } else {
-          apiErrorMessage = data.error || 'Server rejected status modification';
+      const res = await safeApiFetch<{ success: boolean; error?: string }>(
+        `/api/management/users/${selectedUserForStatus.userId}/status`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-id': user.uid,
+            'x-user-role': effectiveRole,
+            'x-user-email': user.email || '',
+          },
+          body: JSON.stringify({
+            status: newStatus,
+            reason: statusReason.trim(),
+          }),
         }
+      );
+
+      if (res.data?.success) {
+        updatedViaApi = true;
       } else {
-        const rawText = await res.text();
-        console.warn('API returned non-JSON response for status update:', rawText.slice(0, 100));
+        apiErrorMessage = res.data?.error || res.error || 'Server rejected status modification';
       }
     } catch (err: unknown) {
       console.warn('Status API unreachable, executing direct Firestore persistence:', err);
@@ -458,31 +458,27 @@ export const ManagementUsersPage: React.FC = () => {
     let apiErrorMessage = '';
 
     try {
-      const res = await fetch(`/api/management/users/${selectedUserForRole.userId}/role`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': user.uid,
-          'x-user-role': effectiveRole,
-          'x-user-email': user.email || '',
-        },
-        body: JSON.stringify({
-          role: newRole,
-          reason: roleReason.trim(),
-        }),
-      });
-
-      const contentType = res.headers.get('content-type') || '';
-      if (contentType.includes('application/json')) {
-        const data = await res.json();
-        if (res.ok && data.success) {
-          updatedViaApi = true;
-        } else {
-          apiErrorMessage = data.error || 'Server rejected role modification';
+      const res = await safeApiFetch<{ success: boolean; error?: string }>(
+        `/api/management/users/${selectedUserForRole.userId}/role`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-id': user.uid,
+            'x-user-role': effectiveRole,
+            'x-user-email': user.email || '',
+          },
+          body: JSON.stringify({
+            role: newRole,
+            reason: roleReason.trim(),
+          }),
         }
+      );
+
+      if (res.data?.success) {
+        updatedViaApi = true;
       } else {
-        const rawText = await res.text();
-        console.warn('API returned non-JSON response for role update:', rawText.slice(0, 100));
+        apiErrorMessage = res.data?.error || res.error || 'Server rejected role modification';
       }
     } catch (err: unknown) {
       console.warn('Role API unreachable or returned error, executing direct Firestore persistence:', err);

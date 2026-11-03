@@ -1043,6 +1043,64 @@ export class CommerceService {
   }
 
   /**
+   * Create or update a product in the marketplace catalog by management.
+   * Persists immediately to Firestore and updates in-memory cache.
+   */
+  async saveProductByManagement(data: Partial<Product>, actorId: string): Promise<Product> {
+    if (!data.name || !data.name.trim()) {
+      throw new Error('Product name is required.');
+    }
+    if (!data.sku || !data.sku.trim()) {
+      throw new Error('Product SKU is required.');
+    }
+
+    const now = new Date().toISOString();
+    const productId = data.productId || `prod-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const slug = data.slug || data.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+
+    const existing = await this.getProductById(productId);
+
+    const product: Product = {
+      productId,
+      sellerId: data.sellerId || existing?.sellerId || 'seller-admin',
+      name: data.name.trim(),
+      slug,
+      category: data.category || existing?.category || 'Electronics',
+      subcategory: data.subcategory || existing?.subcategory,
+      brand: data.brand?.trim() || existing?.brand || 'Nexovira Direct',
+      sku: data.sku.trim().toUpperCase(),
+      price: Number(data.price) || existing?.price || 0,
+      currency: data.currency || existing?.currency || 'NGN',
+      discountPrice: data.discountPrice !== undefined ? Number(data.discountPrice) : existing?.discountPrice,
+      stockQuantity: data.stockQuantity !== undefined ? Number(data.stockQuantity) : (existing?.stockQuantity ?? 10),
+      availabilityStatus: data.availabilityStatus || existing?.availabilityStatus || 'IN_STOCK',
+      productStatus: data.productStatus || existing?.productStatus || 'PUBLISHED',
+      isApproved: data.isApproved !== undefined ? data.isApproved : (existing?.isApproved ?? true),
+      shortDescription: data.shortDescription?.trim() || existing?.shortDescription || data.name.trim(),
+      fullDescription: data.fullDescription?.trim() || existing?.fullDescription || data.name.trim(),
+      productImages: data.productImages && data.productImages.length > 0 ? data.productImages : (existing?.productImages || []),
+      specifications: data.specifications || existing?.specifications || [],
+      variants: data.variants || existing?.variants || [],
+      createdAt: existing?.createdAt || now,
+      updatedAt: now,
+      publishedAt: data.productStatus === 'PUBLISHED' ? (existing?.publishedAt || now) : existing?.publishedAt,
+    };
+
+    // Remove from deleted list if re-saved
+    this.deletedProductIds.delete(productId);
+    await antiResurrectionService.removeTombstone('product', productId).catch(() => null);
+
+    try {
+      const sanitized = sanitizeFirestoreData(product);
+      await setDoc(doc(db, 'products', productId), sanitized, { merge: true });
+    } catch (err) {
+      console.warn('Firestore product write notice:', err);
+    }
+
+    return product;
+  }
+
+  /**
    * Retrieves all marketplace categories for management.
    * Single source of truth from Firestore with anti-resurrection tombstone filtering.
    */
