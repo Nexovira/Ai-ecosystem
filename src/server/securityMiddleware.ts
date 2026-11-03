@@ -44,7 +44,7 @@ export class InMemoryRateLimiter {
     this.maxRequests = maxRequests;
 
     // Periodically clean up expired records every 5 minutes to prevent memory leak
-    setInterval(() => {
+    const cleanupTimer = setInterval(() => {
       const now = Date.now();
       for (const [key, record] of this.requests.entries()) {
         record.timestamps = record.timestamps.filter((t) => now - t < this.windowMs);
@@ -53,6 +53,7 @@ export class InMemoryRateLimiter {
         }
       }
     }, 5 * 60 * 1000);
+    cleanupTimer.unref?.();
   }
 
   public check(key: string): { allowed: boolean; remaining: number; resetMs: number } {

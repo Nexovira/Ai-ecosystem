@@ -25,6 +25,8 @@ import {
   Search,
   MessageSquare,
   Trash2,
+  ShieldAlert,
+  X,
 } from 'lucide-react';
 
 export const ManagementServicesPage: React.FC = () => {
@@ -41,6 +43,7 @@ export const ManagementServicesPage: React.FC = () => {
     managementExperts,
     loadingManagementExperts,
     fetchManagementExperts,
+    createExpertByAdmin,
     setExpertVerification,
     updateExpertProfileByAdmin,
     deleteExpertByAdmin,
@@ -82,6 +85,25 @@ export const ManagementServicesPage: React.FC = () => {
   const [deleteConfirmCategory, setDeleteConfirmCategory] = useState<ServiceCategory | null>(null);
   const [deletingCategory, setDeletingCategory] = useState<boolean>(false);
 
+  // Expert search and filter state
+  const [expertSearchQuery, setExpertSearchQuery] = useState<string>('');
+  const [expertStatusFilter, setExpertStatusFilter] = useState<string>('ALL');
+  const [expertVisibilityFilter, setExpertVisibilityFilter] = useState<string>('ALL');
+
+  // New Expert modal state
+  const [isNewExpertModalOpen, setIsNewExpertModalOpen] = useState<boolean>(false);
+  const [newExpFullName, setNewExpFullName] = useState<string>('');
+  const [newExpTitle, setNewExpTitle] = useState<string>('');
+  const [newExpBio, setNewExpBio] = useState<string>('');
+  const [newExpSkills, setNewExpSkills] = useState<string>('');
+  const [newExpYears, setNewExpYears] = useState<number>(5);
+  const [newExpLocation, setNewExpLocation] = useState<string>('Remote / Global');
+  const [newExpCategory, setNewExpCategory] = useState<string>('custom-engineering');
+  const [newExpVisibility, setNewExpVisibility] = useState<'PUBLIC' | 'HIDDEN'>('PUBLIC');
+  const [newExpAvailability, setNewExpAvailability] = useState<ExpertAvailability>('AVAILABLE');
+  const [newExpVerification, setNewExpVerification] = useState<ExpertVerificationStatus>('VERIFIED');
+  const [creatingExpert, setCreatingExpert] = useState<boolean>(false);
+
   // Expert edit modal state
   const [editingExpert, setEditingExpert] = useState<ExpertProfile | null>(null);
   const [expFullName, setExpFullName] = useState<string>('');
@@ -93,6 +115,7 @@ export const ManagementServicesPage: React.FC = () => {
   const [expImage, setExpImage] = useState<string>('');
   const [expVisibility, setExpVisibility] = useState<'PUBLIC' | 'HIDDEN'>('PUBLIC');
   const [expAvailability, setExpAvailability] = useState<ExpertAvailability>('AVAILABLE');
+  const [expVerificationStatus, setExpVerificationStatus] = useState<ExpertVerificationStatus>('VERIFIED');
   const [savingExpert, setSavingExpert] = useState<boolean>(false);
 
   // Expert deletion confirmation state
@@ -235,6 +258,60 @@ export const ManagementServicesPage: React.FC = () => {
     }
   };
 
+  const handleOpenNewExpert = () => {
+    setNewExpFullName('');
+    setNewExpTitle('Senior Technical Specialist');
+    setNewExpBio('Verified Nexovira Technology & Digital Services Specialist.');
+    setNewExpSkills('Full-Stack Development, Cloud Architecture, DevOps');
+    setNewExpYears(5);
+    setNewExpLocation('Remote / Global');
+    setNewExpCategory(categories[0]?.slug || 'custom-engineering');
+    setNewExpVisibility('PUBLIC');
+    setNewExpAvailability('AVAILABLE');
+    setNewExpVerification('VERIFIED');
+    setActionError(null);
+    setIsNewExpertModalOpen(true);
+  };
+
+  const handleCreateNewExpert = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newExpFullName.trim()) {
+      setActionError('Specialist full name is required.');
+      return;
+    }
+    if (!newExpTitle.trim()) {
+      setActionError('Professional title is required.');
+      return;
+    }
+
+    try {
+      setCreatingExpert(true);
+      setActionError(null);
+      setActionSuccess(null);
+      const res = await createExpertByAdmin({
+        fullName: newExpFullName.trim(),
+        professionalTitle: newExpTitle.trim(),
+        bio: newExpBio.trim(),
+        skills: newExpSkills.split(',').map((s) => s.trim()).filter(Boolean),
+        serviceCategories: [newExpCategory],
+        yearsOfExperience: Number(newExpYears) || 1,
+        location: newExpLocation.trim() || 'Remote / Global',
+        profileVisibility: newExpVisibility,
+        availabilityStatus: newExpAvailability,
+        verificationStatus: newExpVerification,
+      });
+
+      if (res.success) {
+        setActionSuccess(`Specialist profile for ${newExpFullName} created with verified status.`);
+        setIsNewExpertModalOpen(false);
+      } else {
+        setActionError(res.error || 'Failed to create specialist profile');
+      }
+    } finally {
+      setCreatingExpert(false);
+    }
+  };
+
   const handleOpenEditExpert = (exp: ExpertProfile) => {
     setEditingExpert(exp);
     setExpFullName(exp.fullName);
@@ -246,6 +323,7 @@ export const ManagementServicesPage: React.FC = () => {
     setExpImage(exp.profileImage);
     setExpVisibility(exp.profileVisibility);
     setExpAvailability(exp.availabilityStatus);
+    setExpVerificationStatus(exp.verificationStatus);
     setActionError(null);
   };
 
@@ -266,6 +344,7 @@ export const ManagementServicesPage: React.FC = () => {
         profileImage: expImage.trim() || editingExpert.profileImage,
         profileVisibility: expVisibility,
         availabilityStatus: expAvailability,
+        verificationStatus: expVerificationStatus,
       });
 
       if (res.success) {
@@ -278,6 +357,53 @@ export const ManagementServicesPage: React.FC = () => {
       setSavingExpert(false);
     }
   };
+
+  const handleToggleVerification = async (exp: ExpertProfile) => {
+    try {
+      setActionError(null);
+      setActionSuccess(null);
+      const nextStatus: ExpertVerificationStatus = exp.verificationStatus === 'VERIFIED' ? 'SUSPENDED' : 'VERIFIED';
+      const nextVisibility = nextStatus === 'VERIFIED' ? 'PUBLIC' : 'HIDDEN';
+      const res = await setExpertVerification(exp.expertId, nextStatus, nextVisibility);
+      if (res.success) {
+        setActionSuccess(`Specialist ${exp.fullName} verification updated to ${nextStatus}.`);
+      } else {
+        setActionError(res.error || 'Failed to update verification status');
+      }
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Error changing verification status');
+    }
+  };
+
+  const handleToggleVisibility = async (exp: ExpertProfile) => {
+    try {
+      setActionError(null);
+      setActionSuccess(null);
+      const nextVisibility = exp.profileVisibility === 'PUBLIC' ? 'HIDDEN' : 'PUBLIC';
+      const res = await updateExpertProfileByAdmin(exp.expertId, { profileVisibility: nextVisibility });
+      if (res.success) {
+        setActionSuccess(`Specialist ${exp.fullName} directory visibility updated to ${nextVisibility}.`);
+      } else {
+        setActionError(res.error || 'Failed to update visibility');
+      }
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Error changing visibility');
+    }
+  };
+
+  const filteredExperts = managementExperts.filter((exp) => {
+    if (expertStatusFilter !== 'ALL' && exp.verificationStatus !== expertStatusFilter) return false;
+    if (expertVisibilityFilter !== 'ALL' && exp.profileVisibility !== expertVisibilityFilter) return false;
+    if (expertSearchQuery.trim()) {
+      const q = expertSearchQuery.toLowerCase();
+      const matchName = exp.fullName.toLowerCase().includes(q);
+      const matchTitle = exp.professionalTitle.toLowerCase().includes(q);
+      const matchLocation = exp.location.toLowerCase().includes(q);
+      const matchSkills = exp.skills.some((s) => s.toLowerCase().includes(q));
+      if (!matchName && !matchTitle && !matchLocation && !matchSkills) return false;
+    }
+    return true;
+  });
 
   const handleExecuteDeleteExpert = async () => {
     if (!deleteConfirmExpert) return;
@@ -476,68 +602,178 @@ export const ManagementServicesPage: React.FC = () => {
 
         {/* TAB 2: EXPERTS REGISTRY */}
         {activeTab === 'experts' && (
-          <div className="space-y-4">
+          <div className="space-y-6">
+            {/* Header stats & Add Specialist Button */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#011B33] border border-[#0682F4]/20 rounded-2xl p-5">
+              <div className="flex flex-wrap items-center gap-4 text-xs">
+                <span className="text-[#CCD2D9]">
+                  Total Specialists: <strong className="text-white font-mono text-sm">{managementExperts.length}</strong>
+                </span>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>{managementExperts.filter((e) => e.verificationStatus === 'VERIFIED').length} Verified</span>
+                </span>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/10 border border-amber-500/30 text-amber-400">
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>{managementExperts.filter((e) => e.verificationStatus === 'PENDING').length} Pending</span>
+                </span>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>{managementExperts.filter((e) => e.profileVisibility === 'PUBLIC').length} Public</span>
+                </span>
+              </div>
+
+              <Button variant="primary" size="sm" onClick={handleOpenNewExpert} className="shrink-0">
+                <Plus className="w-4 h-4 mr-1.5" />
+                <span>Add New Specialist</span>
+              </Button>
+            </div>
+
+            {/* Search and Filters Toolbar */}
+            <div className="bg-[#011B33] border border-[#0682F4]/20 rounded-2xl p-4 flex flex-col md:flex-row items-center gap-3">
+              <div className="relative flex-1 w-full">
+                <Search className="w-4 h-4 text-[#0682F4] absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search specialists by name, title, skill, or location..."
+                  value={expertSearchQuery}
+                  onChange={(e) => setExpertSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white placeholder-[#CCD2D9]/50 text-xs sm:text-sm focus:outline-none focus:border-[#08E6F9]"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 w-full md:w-auto">
+                <select
+                  value={expertStatusFilter}
+                  onChange={(e) => setExpertStatusFilter(e.target.value)}
+                  className="px-3 py-2 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white text-xs focus:outline-none focus:border-[#08E6F9] shrink-0"
+                >
+                  <option value="ALL">All Statuses</option>
+                  <option value="VERIFIED">Verified Only</option>
+                  <option value="PENDING">Pending Review</option>
+                  <option value="SUSPENDED">Suspended</option>
+                  <option value="REJECTED">Rejected</option>
+                </select>
+
+                <select
+                  value={expertVisibilityFilter}
+                  onChange={(e) => setExpertVisibilityFilter(e.target.value)}
+                  className="px-3 py-2 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white text-xs focus:outline-none focus:border-[#08E6F9] shrink-0"
+                >
+                  <option value="ALL">All Visibility</option>
+                  <option value="PUBLIC">Public in Directory</option>
+                  <option value="HIDDEN">Hidden / Unlisted</option>
+                </select>
+              </div>
+            </div>
+
             {loadingManagementExperts ? (
               <div className="py-20 text-center">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#08E6F9] mx-auto" />
-                <p className="text-xs text-[#CCD2D9] mt-3">Loading experts...</p>
+                <p className="text-xs text-[#CCD2D9] mt-3">Loading specialists directory...</p>
               </div>
-            ) : managementExperts.length === 0 ? (
-              <div className="bg-[#011B33] border border-[#0682F4]/20 rounded-2xl p-12 text-center text-xs text-[#CCD2D9]">
-                No expert profiles registered in the system.
+            ) : filteredExperts.length === 0 ? (
+              <div className="bg-[#011B33] border border-[#0682F4]/20 rounded-2xl p-12 text-center text-xs text-[#CCD2D9] space-y-3">
+                <Users className="w-10 h-10 text-[#0682F4] mx-auto opacity-60" />
+                <p className="font-semibold text-white">No specialist profiles match the selected criteria.</p>
+                <p className="text-[11px]">Adjust your search query or filters, or register a new specialist.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {managementExperts.map((exp) => (
+                {filteredExperts.map((exp) => (
                   <div
                     key={exp.expertId}
-                    className="bg-[#011B33] border border-[#0682F4]/25 rounded-2xl p-6 flex flex-col justify-between space-y-4"
+                    className="bg-[#011B33] border border-[#0682F4]/25 hover:border-[#08E6F9]/50 transition-colors rounded-2xl p-6 flex flex-col justify-between space-y-4 shadow-lg"
                   >
                     <div>
-                      <div className="flex items-start gap-3 mb-3">
-                        <img
-                          src={exp.profileImage}
-                          alt={exp.fullName}
-                          className="w-14 h-14 rounded-xl object-cover border border-[#0682F4]/40 shrink-0"
-                        />
+                      <div className="flex items-start gap-3.5 mb-3.5">
+                        <div className="w-13 h-13 rounded-2xl bg-gradient-to-br from-[#08E6F9]/20 to-[#0682F4]/30 border border-[#08E6F9]/40 flex items-center justify-center font-bold text-xl text-[#08E6F9] shrink-0 shadow-inner">
+                          {exp.fullName ? exp.fullName.charAt(0).toUpperCase() : 'E'}
+                        </div>
                         <div className="min-w-0 flex-1">
-                          <h3 className="font-bold text-white text-base truncate">{exp.fullName}</h3>
-                          <p className="text-xs text-[#0682F4] font-medium truncate">{exp.professionalTitle}</p>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <h3 className="font-bold text-white text-base truncate">{exp.fullName}</h3>
+                            {exp.verificationStatus === 'VERIFIED' && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#08E6F9] bg-[#08E6F9]/15 px-2 py-0.5 rounded-full border border-[#08E6F9]/30">
+                                <CheckCircle2 className="w-3 h-3 text-[#08E6F9]" />
+                                <span>Verified</span>
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-[#0682F4] font-medium truncate mt-0.5">{exp.professionalTitle}</p>
                           <div className="flex items-center gap-2 mt-1 text-[11px] text-[#CCD2D9]">
                             <span>{exp.location}</span>
                             <span>•</span>
-                            <span>{exp.yearsOfExperience} yrs</span>
+                            <span>{exp.yearsOfExperience} yrs exp</span>
                           </div>
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between text-xs py-2 border-y border-[#0682F4]/20 mb-3">
-                        <span className="text-[#CCD2D9]">Vetting Status:</span>
-                        <span
-                          className={`font-bold px-2 py-0.5 rounded text-[11px] ${
-                            exp.verificationStatus === 'VERIFIED'
-                              ? 'bg-emerald-500/10 text-emerald-400'
-                              : exp.verificationStatus === 'PENDING'
-                              ? 'bg-amber-500/10 text-amber-400'
-                              : 'bg-rose-500/10 text-rose-400'
-                          }`}
-                        >
-                          {exp.verificationStatus}
-                        </span>
+                      <div className="grid grid-cols-2 gap-2 text-xs py-2.5 border-y border-[#0682F4]/20 mb-3 bg-[#01213D]/50 rounded-xl px-3">
+                        <div>
+                          <span className="text-[10px] text-[#CCD2D9] uppercase tracking-wider block">Vetting</span>
+                          <span
+                            className={`font-bold inline-flex items-center gap-1 text-[11px] mt-0.5 ${
+                              exp.verificationStatus === 'VERIFIED'
+                                ? 'text-emerald-400'
+                                : exp.verificationStatus === 'PENDING'
+                                ? 'text-amber-400'
+                                : 'text-rose-400'
+                            }`}
+                          >
+                            {exp.verificationStatus === 'VERIFIED' ? (
+                              <CheckCircle2 className="w-3 h-3" />
+                            ) : exp.verificationStatus === 'PENDING' ? (
+                              <Clock className="w-3 h-3" />
+                            ) : (
+                              <AlertCircle className="w-3 h-3" />
+                            )}
+                            {exp.verificationStatus}
+                          </span>
+                        </div>
+
+                        <div>
+                          <span className="text-[10px] text-[#CCD2D9] uppercase tracking-wider block">Visibility</span>
+                          <span
+                            className={`font-semibold inline-flex items-center gap-1 text-[11px] mt-0.5 ${
+                              exp.profileVisibility === 'PUBLIC' ? 'text-cyan-400' : 'text-zinc-400'
+                            }`}
+                          >
+                            {exp.profileVisibility === 'PUBLIC' ? (
+                              <Eye className="w-3 h-3" />
+                            ) : (
+                              <EyeOff className="w-3 h-3" />
+                            )}
+                            {exp.profileVisibility}
+                          </span>
+                        </div>
                       </div>
 
-                      <div className="flex items-center justify-between text-xs mb-3">
-                        <span className="text-[#CCD2D9]">Directory Visibility:</span>
-                        <span className="font-semibold text-white">{exp.profileVisibility}</span>
-                      </div>
+                      <p className="text-xs text-[#CCD2D9] line-clamp-2 leading-relaxed mb-3">{exp.bio}</p>
 
-                      <p className="text-xs text-[#CCD2D9] line-clamp-2">{exp.bio}</p>
+                      {exp.skills && exp.skills.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mb-2">
+                          {exp.skills.slice(0, 3).map((skill, i) => (
+                            <span
+                              key={i}
+                              className="px-2 py-0.5 rounded text-[10px] font-medium bg-[#01213D] border border-[#0682F4]/20 text-[#CCD2D9]"
+                            >
+                              {skill}
+                            </span>
+                          ))}
+                          {exp.skills.length > 3 && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] text-[#CCD2D9] bg-[#01213D]">
+                              +{exp.skills.length - 3}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     <div className="pt-3 border-t border-[#0682F4]/20 flex flex-wrap items-center gap-2">
                       <button
                         onClick={() => handleOpenEditExpert(exp)}
-                        className="px-3 py-1.5 rounded-lg bg-[#01213D] hover:bg-[#0682F4]/20 border border-[#0682F4]/30 text-[#08E6F9] text-xs font-semibold cursor-pointer flex items-center gap-1"
+                        className="px-3 py-1.5 rounded-lg bg-[#01213D] hover:bg-[#0682F4]/20 border border-[#0682F4]/30 text-[#08E6F9] text-xs font-semibold cursor-pointer flex items-center gap-1 transition-colors"
                         title="Edit Specialist Profile"
                       >
                         <Edit2 className="w-3 h-3" />
@@ -546,36 +782,48 @@ export const ManagementServicesPage: React.FC = () => {
 
                       {exp.verificationStatus !== 'VERIFIED' ? (
                         <button
-                          onClick={() => setExpertVerification(exp.expertId, 'VERIFIED', 'PUBLIC')}
-                          className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold cursor-pointer"
+                          onClick={() => handleToggleVerification(exp)}
+                          className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold cursor-pointer flex items-center gap-1 transition-colors shadow-sm"
                         >
-                          Verify & Publish
+                          <CheckCircle2 className="w-3 h-3" />
+                          <span>Mark Verified</span>
                         </button>
                       ) : (
                         <button
-                          onClick={() => setExpertVerification(exp.expertId, 'SUSPENDED', 'HIDDEN')}
-                          className="px-3 py-1.5 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-white text-xs font-semibold cursor-pointer"
+                          onClick={() => handleToggleVerification(exp)}
+                          className="px-3 py-1.5 rounded-lg bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-amber-300 text-xs font-semibold cursor-pointer flex items-center gap-1 transition-colors"
+                          title="Revoke Verification"
                         >
-                          Suspend
-                        </button>
-                      )}
-
-                      {exp.verificationStatus !== 'REJECTED' && (
-                        <button
-                          onClick={() => setExpertVerification(exp.expertId, 'REJECTED', 'HIDDEN')}
-                          className="px-3 py-1.5 rounded-lg border border-rose-500/40 text-rose-400 hover:bg-rose-500/10 text-xs font-semibold cursor-pointer"
-                        >
-                          Reject
+                          <ShieldAlert className="w-3 h-3" />
+                          <span>Revoke Verified</span>
                         </button>
                       )}
 
                       <button
+                        onClick={() => handleToggleVisibility(exp)}
+                        className="px-2.5 py-1.5 rounded-lg bg-[#01213D] hover:bg-[#0682F4]/20 border border-[#0682F4]/30 text-white text-xs font-medium cursor-pointer flex items-center gap-1 transition-colors"
+                        title={exp.profileVisibility === 'PUBLIC' ? 'Unpublish from directory' : 'Publish to directory'}
+                      >
+                        {exp.profileVisibility === 'PUBLIC' ? (
+                          <>
+                            <EyeOff className="w-3 h-3 text-zinc-400" />
+                            <span className="text-[11px]">Unpublish</span>
+                          </>
+                        ) : (
+                          <>
+                            <Eye className="w-3 h-3 text-cyan-400" />
+                            <span className="text-[11px]">Publish</span>
+                          </>
+                        )}
+                      </button>
+
+                      <button
                         onClick={() => setDeleteConfirmExpert(exp)}
-                        className="px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-semibold cursor-pointer flex items-center gap-1 ml-auto"
+                        className="px-2.5 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-semibold cursor-pointer flex items-center gap-1 ml-auto transition-colors"
                         title="Remove Specialist"
                       >
                         <Trash2 className="w-3 h-3" />
-                        <span>Remove</span>
+                        <span className="hidden sm:inline">Remove</span>
                       </button>
                     </div>
                   </div>
@@ -1153,7 +1401,7 @@ export const ManagementServicesPage: React.FC = () => {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-xs font-bold text-[#08E6F9] uppercase tracking-wider mb-1">
                       Directory Visibility
@@ -1181,6 +1429,21 @@ export const ManagementServicesPage: React.FC = () => {
                       <option value="UNAVAILABLE">UNAVAILABLE</option>
                     </select>
                   </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#08E6F9] uppercase tracking-wider mb-1">
+                      Vetting Status
+                    </label>
+                    <select
+                      value={expVerificationStatus}
+                      onChange={(e) => setExpVerificationStatus(e.target.value as any)}
+                      className="w-full px-3.5 py-2 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white text-xs"
+                    >
+                      <option value="VERIFIED">VERIFIED</option>
+                      <option value="PENDING">PENDING</option>
+                      <option value="SUSPENDED">SUSPENDED</option>
+                      <option value="REJECTED">REJECTED</option>
+                    </select>
+                  </div>
                 </div>
 
                 <div className="pt-4 border-t border-[#0682F4]/20 flex justify-end gap-2">
@@ -1189,6 +1452,191 @@ export const ManagementServicesPage: React.FC = () => {
                   </Button>
                   <Button type="submit" variant="primary" size="sm" disabled={savingExpert}>
                     {savingExpert ? 'Saving...' : 'Save Profile Changes'}
+                  </Button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: REGISTER NEW VERIFIED SPECIALIST */}
+        {isNewExpertModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+            <div className="bg-[#011B33] border border-[#08E6F9]/40 rounded-3xl p-6 sm:p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto space-y-5 shadow-2xl">
+              <div className="flex items-center justify-between pb-3 border-b border-[#0682F4]/20">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-[#08E6F9]/10 border border-[#08E6F9]/30 flex items-center justify-center text-[#08E6F9]">
+                    <Plus className="w-4 h-4" />
+                  </div>
+                  <h3 className="text-lg font-bold text-white">Register Verified Specialist</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsNewExpertModalOpen(false)}
+                  className="text-[#CCD2D9] hover:text-white cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {actionError && (
+                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs text-rose-300">
+                  {actionError}
+                </div>
+              )}
+
+              <form onSubmit={handleCreateNewExpert} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-[#08E6F9] uppercase tracking-wider mb-1">
+                    Specialist Full Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={newExpFullName}
+                    onChange={(e) => setNewExpFullName(e.target.value)}
+                    required
+                    placeholder="e.g. Elena Rostova"
+                    className="w-full px-3.5 py-2 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white placeholder-[#CCD2D9]/40 text-xs sm:text-sm focus:outline-none focus:border-[#08E6F9]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#08E6F9] uppercase tracking-wider mb-1">
+                    Professional Title *
+                  </label>
+                  <input
+                    type="text"
+                    value={newExpTitle}
+                    onChange={(e) => setNewExpTitle(e.target.value)}
+                    required
+                    placeholder="e.g. Lead Cloud Architect & Distributed Systems"
+                    className="w-full px-3.5 py-2 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white placeholder-[#CCD2D9]/40 text-xs sm:text-sm focus:outline-none focus:border-[#08E6F9]"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-[#08E6F9] uppercase tracking-wider mb-1">
+                      Primary Service Category
+                    </label>
+                    <select
+                      value={newExpCategory}
+                      onChange={(e) => setNewExpCategory(e.target.value)}
+                      className="w-full px-3.5 py-2 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white text-xs focus:outline-none focus:border-[#08E6F9]"
+                    >
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.slug}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-[#08E6F9] uppercase tracking-wider mb-1">
+                      Experience (Years)
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={40}
+                      value={newExpYears}
+                      onChange={(e) => setNewExpYears(Number(e.target.value))}
+                      className="w-full px-3.5 py-2 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white text-xs sm:text-sm focus:outline-none focus:border-[#08E6F9]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-[#08E6F9] uppercase tracking-wider mb-1">
+                      Location / Region
+                    </label>
+                    <input
+                      type="text"
+                      value={newExpLocation}
+                      onChange={(e) => setNewExpLocation(e.target.value)}
+                      placeholder="e.g. Berlin, Germany / Remote"
+                      className="w-full px-3.5 py-2 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white placeholder-[#CCD2D9]/40 text-xs sm:text-sm focus:outline-none focus:border-[#08E6F9]"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#08E6F9] uppercase tracking-wider mb-1">
+                    Specialist Bio & Expertise Overview
+                  </label>
+                  <textarea
+                    value={newExpBio}
+                    onChange={(e) => setNewExpBio(e.target.value)}
+                    rows={3}
+                    placeholder="Provide a comprehensive summary of the specialist's engineering background and capabilities..."
+                    className="w-full px-3.5 py-2 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white placeholder-[#CCD2D9]/40 text-xs sm:text-sm focus:outline-none focus:border-[#08E6F9]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#08E6F9] uppercase tracking-wider mb-1">
+                    Skills & Technologies (comma separated)
+                  </label>
+                  <input
+                    type="text"
+                    value={newExpSkills}
+                    onChange={(e) => setNewExpSkills(e.target.value)}
+                    placeholder="TypeScript, Kubernetes, Microservices, Security Auditing"
+                    className="w-full px-3.5 py-2 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white placeholder-[#CCD2D9]/40 text-xs sm:text-sm focus:outline-none focus:border-[#08E6F9]"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-[#08E6F9] uppercase tracking-wider mb-1">
+                      Directory Visibility
+                    </label>
+                    <select
+                      value={newExpVisibility}
+                      onChange={(e) => setNewExpVisibility(e.target.value as any)}
+                      className="w-full px-3.5 py-2 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white text-xs focus:outline-none focus:border-[#08E6F9]"
+                    >
+                      <option value="PUBLIC">PUBLIC</option>
+                      <option value="HIDDEN">HIDDEN</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-[#08E6F9] uppercase tracking-wider mb-1">
+                      Availability Status
+                    </label>
+                    <select
+                      value={newExpAvailability}
+                      onChange={(e) => setNewExpAvailability(e.target.value as any)}
+                      className="w-full px-3.5 py-2 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white text-xs focus:outline-none focus:border-[#08E6F9]"
+                    >
+                      <option value="AVAILABLE">AVAILABLE</option>
+                      <option value="LIMITED">LIMITED</option>
+                      <option value="UNAVAILABLE">UNAVAILABLE</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-[#08E6F9] uppercase tracking-wider mb-1">
+                      Initial Vetting Status
+                    </label>
+                    <select
+                      value={newExpVerification}
+                      onChange={(e) => setNewExpVerification(e.target.value as any)}
+                      className="w-full px-3.5 py-2 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white text-xs focus:outline-none focus:border-[#08E6F9]"
+                    >
+                      <option value="VERIFIED">VERIFIED</option>
+                      <option value="PENDING">PENDING</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-[#0682F4]/20 flex justify-end gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => setIsNewExpertModalOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" variant="primary" size="sm" disabled={creatingExpert}>
+                    {creatingExpert ? 'Registering Specialist...' : 'Register Specialist'}
                   </Button>
                 </div>
               </form>

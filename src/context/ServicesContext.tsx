@@ -55,6 +55,7 @@ interface ServicesContextType {
   managementExperts: ExpertProfile[];
   loadingManagementExperts: boolean;
   fetchManagementExperts: () => Promise<void>;
+  createExpertByAdmin: (data: Partial<ExpertProfile>) => Promise<{ success: boolean; expert?: ExpertProfile; error?: string }>;
   setExpertVerification: (expertId: string, status: ExpertVerificationStatus, visibility?: 'PUBLIC' | 'HIDDEN') => Promise<{ success: boolean; error?: string }>;
   updateExpertProfileByAdmin: (expertId: string, data: Partial<ExpertProfile>) => Promise<{ success: boolean; error?: string }>;
   deleteExpertByAdmin: (expertId: string) => Promise<{ success: boolean; mode?: 'DELETED' | 'SUSPENDED'; message?: string; error?: string }>;
@@ -503,6 +504,31 @@ export const ServicesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [getAuthHeaders]);
 
+  // Management: Create new specialist profile
+  const createExpertByAdmin = useCallback(
+    async (
+      data: Partial<ExpertProfile>
+    ): Promise<{ success: boolean; expert?: ExpertProfile; error?: string }> => {
+      try {
+        const res = await fetch('/api/services/management/experts', {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify(data),
+        });
+        const result = await res.json();
+        if (result.success) {
+          fetchManagementExperts();
+          fetchExperts();
+          return { success: true, expert: result.expert };
+        }
+        return { success: false, error: result.error || 'Failed to create specialist' };
+      } catch (err: unknown) {
+        return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+      }
+    },
+    [getAuthHeaders, fetchManagementExperts, fetchExperts]
+  );
+
   // Management: Set expert verification status
   const setExpertVerification = useCallback(
     async (
@@ -753,6 +779,7 @@ export const ServicesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         managementExperts,
         loadingManagementExperts,
         fetchManagementExperts,
+        createExpertByAdmin,
         setExpertVerification,
         updateExpertProfileByAdmin,
         deleteExpertByAdmin,

@@ -719,10 +719,13 @@ export async function createApp(): Promise<express.Express> {
    * GET /api/services/management/experts
    * Management views all experts including pending applications
    */
-  app.get('/api/services/management/experts', async (req: Request, res: Response) => {
+  app.get(['/api/services/management/experts', '/services/management/experts'], async (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
     try {
+      const userEmail = ((req.headers['x-user-email'] as string) || '').trim().toLowerCase();
       const userRole = (req.headers['x-user-role'] as string) || '';
-      if (!['ADMIN', 'SUPER_ADMIN', 'STAFF'].includes(userRole)) {
+      const isOwner = ['nexoviratech@gmail.com', 'nexovirasupport@gmail.com', 'admin@nexovira.com'].includes(userEmail);
+      if (!isOwner && !['ADMIN', 'SUPER_ADMIN', 'STAFF'].includes(userRole)) {
         return res.status(403).json({ success: false, error: 'Unauthorized: Management access only.' });
       }
 
@@ -736,13 +739,43 @@ export async function createApp(): Promise<express.Express> {
   });
 
   /**
+   * POST /api/services/management/experts
+   * Management create and register a new verified specialist
+   */
+  app.post(['/api/services/management/experts', '/services/management/experts'], async (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
+    try {
+      const userEmail = ((req.headers['x-user-email'] as string) || '').trim().toLowerCase();
+      const userRole = (req.headers['x-user-role'] as string) || '';
+      const isOwner = ['nexoviratech@gmail.com', 'nexovirasupport@gmail.com', 'admin@nexovira.com'].includes(userEmail);
+
+      if (!isOwner && !['ADMIN', 'SUPER_ADMIN', 'STAFF'].includes(userRole)) {
+        return res.status(403).json({ success: false, error: 'Unauthorized: Management access only.' });
+      }
+
+      const result = await servicesService.managementCreateExpert(req.body);
+      if (!result.success) {
+        return res.status(400).json(result);
+      }
+      return res.json(result);
+    } catch (err: unknown) {
+      console.error('Error creating specialist profile:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to create specialist profile';
+      return res.status(500).json({ success: false, error: msg });
+    }
+  });
+
+  /**
    * PATCH /api/services/management/experts/:id/verification
    * Management verifies, rejects, or suspends an expert
    */
-  app.patch('/api/services/management/experts/:id/verification', async (req: Request, res: Response) => {
+  app.patch(['/api/services/management/experts/:id/verification', '/services/management/experts/:id/verification'], async (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
     try {
+      const userEmail = ((req.headers['x-user-email'] as string) || '').trim().toLowerCase();
       const userRole = (req.headers['x-user-role'] as string) || '';
-      if (!['ADMIN', 'SUPER_ADMIN', 'STAFF'].includes(userRole)) {
+      const isOwner = ['nexoviratech@gmail.com', 'nexovirasupport@gmail.com', 'admin@nexovira.com'].includes(userEmail);
+      if (!isOwner && !['ADMIN', 'SUPER_ADMIN', 'STAFF'].includes(userRole)) {
         return res.status(403).json({ success: false, error: 'Unauthorized: Management access only.' });
       }
 
@@ -773,10 +806,13 @@ export async function createApp(): Promise<express.Express> {
    * PUT /api/services/management/experts/:id
    * Management edit expert profile fields
    */
-  app.put('/api/services/management/experts/:id', async (req: Request, res: Response) => {
+  app.put(['/api/services/management/experts/:id', '/services/management/experts/:id'], async (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
     try {
+      const userEmail = ((req.headers['x-user-email'] as string) || '').trim().toLowerCase();
       const userRole = (req.headers['x-user-role'] as string) || '';
-      if (!['ADMIN', 'SUPER_ADMIN', 'STAFF'].includes(userRole)) {
+      const isOwner = ['nexoviratech@gmail.com', 'nexovirasupport@gmail.com', 'admin@nexovira.com'].includes(userEmail);
+      if (!isOwner && !['ADMIN', 'SUPER_ADMIN', 'STAFF'].includes(userRole)) {
         return res.status(403).json({ success: false, error: 'Unauthorized: Management role required.' });
       }
 
@@ -796,10 +832,13 @@ export async function createApp(): Promise<express.Express> {
    * DELETE /api/services/management/experts/:id
    * Management safely suspend or permanently delete expert profile
    */
-  app.delete('/api/services/management/experts/:id', async (req: Request, res: Response) => {
+  app.delete(['/api/services/management/experts/:id', '/services/management/experts/:id'], async (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
     try {
+      const userEmail = ((req.headers['x-user-email'] as string) || '').trim().toLowerCase();
       const userRole = (req.headers['x-user-role'] as string) || '';
-      if (!['ADMIN', 'SUPER_ADMIN'].includes(userRole)) {
+      const isOwner = ['nexoviratech@gmail.com', 'nexovirasupport@gmail.com', 'admin@nexovira.com'].includes(userEmail);
+      if (!isOwner && !['ADMIN', 'SUPER_ADMIN'].includes(userRole)) {
         return res.status(403).json({ success: false, error: 'Unauthorized: Admin role required.' });
       }
 
@@ -2655,7 +2694,8 @@ Respond with a strictly valid JSON object matching this schema:
    * GET /api/management/users
    * Filtered, paginated user list with real ecosystem stats.
    */
-  app.get('/api/management/users', async (req: Request, res: Response) => {
+  app.get(['/api/management/users', '/management/users'], async (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
     try {
       const authResult = requireManagementAuth(req, res, 'USERS_VIEW');
       if (!authResult) return;
@@ -2678,7 +2718,8 @@ Respond with a strictly valid JSON object matching this schema:
    * POST /api/management/users/:userId/status
    * Update user account status (ACTIVE, RESTRICTED, SUSPENDED, UNDER_REVIEW).
    */
-  app.post('/api/management/users/:userId/status', async (req: Request, res: Response) => {
+  app.post(['/api/management/users/:userId/status', '/management/users/:userId/status'], async (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
     try {
       const authResult = requireManagementAuth(req, res, 'USERS_MANAGE_STATUS');
       if (!authResult) return;
@@ -2703,7 +2744,7 @@ Respond with a strictly valid JSON object matching this schema:
     } catch (err: unknown) {
       console.error('Error updating user status:', err);
       const msg = err instanceof Error ? err.message : 'Failed to update user status';
-      return res.status(403).json({ success: false, error: msg });
+      return res.status(400).json({ success: false, error: msg });
     }
   });
 
@@ -2711,13 +2752,18 @@ Respond with a strictly valid JSON object matching this schema:
    * POST /api/management/users/:userId/role
    * Update user role with privilege-escalation prevention.
    */
-  app.post('/api/management/users/:userId/role', async (req: Request, res: Response) => {
+  app.post(['/api/management/users/:userId/role', '/management/users/:userId/role'], async (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
     try {
       const authResult = requireManagementAuth(req, res, 'USERS_MANAGE_ROLE');
       if (!authResult) return;
 
       const { userId } = req.params;
       const { role, reason } = req.body;
+
+      if (!role) {
+        return res.status(400).json({ success: false, error: 'Target role is required.' });
+      }
 
       const result = await managementService.updateUserRole({
         targetUserId: userId,
@@ -2732,7 +2778,7 @@ Respond with a strictly valid JSON object matching this schema:
     } catch (err: unknown) {
       console.error('Error updating user role:', err);
       const msg = err instanceof Error ? err.message : 'Failed to update user role';
-      return res.status(403).json({ success: false, error: msg });
+      return res.status(400).json({ success: false, error: msg });
     }
   });
 

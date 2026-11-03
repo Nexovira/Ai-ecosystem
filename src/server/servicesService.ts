@@ -35,8 +35,12 @@ import { antiResurrectionService } from './antiResurrectionService';
 
 // In-memory runtime caching to guarantee 100% responsiveness and smooth fallbacks
 class ServicesService {
-  private categoriesCache: ServiceCategory[] = [];
-  private expertsCache: ExpertProfile[] = [];
+  private categoriesCache: ServiceCategory[] = INITIAL_SERVICE_CATEGORIES.filter(
+    (c) => !antiResurrectionService.isTombstoned('service_category', c.id)
+  );
+  private expertsCache: ExpertProfile[] = INITIAL_EXPERTS.filter(
+    (e) => !antiResurrectionService.isTombstoned('expert', e.expertId)
+  );
   private requestsCache: ProjectRequest[] = [];
   private updatesCache: Record<string, ProjectUpdate[]> = {};
   private applicationsCache: ExpertApplication[] = [];
@@ -65,6 +69,13 @@ class ServicesService {
           }
         });
       }
+      if (this.categoriesCache.length === 0) {
+        INITIAL_SERVICE_CATEGORIES.forEach((cat) => {
+          if (!antiResurrectionService.isTombstoned('service_category', cat.id)) {
+            this.categoriesCache.push(cat);
+          }
+        });
+      }
     } catch {
       // Firestore load notice
     }
@@ -83,6 +94,14 @@ class ServicesService {
             } else {
               this.expertsCache.push(exp);
             }
+          }
+        });
+      }
+
+      if (this.expertsCache.length === 0) {
+        INITIAL_EXPERTS.forEach((exp) => {
+          if (!antiResurrectionService.isTombstoned('expert', exp.expertId)) {
+            this.expertsCache.push(exp);
           }
         });
       }
@@ -283,6 +302,12 @@ class ServicesService {
       }
     } catch {
       // Use cache
+    }
+
+    if (this.categoriesCache.length === 0) {
+      this.categoriesCache = INITIAL_SERVICE_CATEGORIES.filter(
+        (c) => !antiResurrectionService.isTombstoned('service_category', c.id)
+      );
     }
 
     if (includeInactive) {
@@ -529,6 +554,14 @@ class ServicesService {
       // Fallback
     }
 
+    if (this.expertsCache.length === 0) {
+      INITIAL_EXPERTS.forEach((exp) => {
+        if (!antiResurrectionService.isTombstoned('expert', exp.expertId)) {
+          this.expertsCache.push(exp);
+        }
+      });
+    }
+
     return [...this.expertsCache];
   }
 
@@ -673,6 +706,7 @@ class ServicesService {
       languages: payload.languages || expert.languages,
       availabilityStatus: payload.availabilityStatus || expert.availabilityStatus,
       profileVisibility: payload.profileVisibility || expert.profileVisibility,
+      verificationStatus: payload.verificationStatus || expert.verificationStatus,
       updatedAt: now,
     };
 
@@ -694,6 +728,65 @@ class ServicesService {
     );
 
     return { success: true, profile: updated };
+  }
+
+  async managementCreateExpert(
+    payload: Partial<ExpertProfile>
+  ): Promise<{ success: boolean; expert?: ExpertProfile; error?: string }> {
+    if (!payload.fullName || !payload.fullName.trim()) {
+      return { success: false, error: 'Specialist full name is required.' };
+    }
+    if (!payload.professionalTitle || !payload.professionalTitle.trim()) {
+      return { success: false, error: 'Professional title is required.' };
+    }
+
+    const now = new Date().toISOString();
+    const expertId = payload.expertId || `exp-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
+    const userId = payload.userId || `usr-${expertId}`;
+
+    const newExpert: ExpertProfile = {
+      expertId,
+      userId,
+      fullName: payload.fullName.trim(),
+      professionalTitle: payload.professionalTitle.trim(),
+      profileImage: payload.profileImage || '',
+      bio: payload.bio ? payload.bio.trim() : 'Verified Nexovira Technology & Digital Services Specialist.',
+      skills: Array.isArray(payload.skills) ? payload.skills : [],
+      serviceCategories: Array.isArray(payload.serviceCategories) ? payload.serviceCategories : ['custom-engineering'],
+      yearsOfExperience: payload.yearsOfExperience !== undefined ? Number(payload.yearsOfExperience) : 5,
+      portfolioLinks: Array.isArray(payload.portfolioLinks) ? payload.portfolioLinks : [],
+      location: payload.location ? payload.location.trim() : 'Remote / Global',
+      languages: Array.isArray(payload.languages) ? payload.languages : ['English'],
+      availabilityStatus: payload.availabilityStatus || 'AVAILABLE',
+      profileVisibility: payload.profileVisibility || 'PUBLIC',
+      verificationStatus: payload.verificationStatus || 'VERIFIED',
+      completedProjectsCount: 0,
+      rating: 5.0,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    // Update in-memory cache
+    this.expertsCache.push(newExpert);
+
+    // Persist to Firestore
+    if (db) {
+      setDoc(doc(db, 'experts', expertId), sanitizeFirestoreData(newExpert), { merge: true }).catch((err) => {
+        console.warn('Firestore expert creation write notice:', err);
+      });
+    }
+
+    this.recordAuditLog(
+      'MANAGEMENT',
+      'nexoviratech@gmail.com',
+      'EXPERT_PROFILE_CREATED',
+      'EXPERT',
+      expertId,
+      '',
+      JSON.stringify(newExpert)
+    );
+
+    return { success: true, expert: newExpert };
   }
 
   async managementDeleteExpert(

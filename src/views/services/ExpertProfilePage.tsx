@@ -100,10 +100,12 @@ export const ExpertProfilePage: React.FC<ExpertProfilePageProps> = ({ slugOrId }
                   <h1 className="text-2xl sm:text-4xl font-black text-white">
                     {expert.fullName}
                   </h1>
-                  <span className="inline-flex items-center gap-1 text-xs font-bold text-[#08E6F9] bg-[#08E6F9]/10 px-3 py-1 rounded-full border border-[#08E6F9]/40">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Verified Nexovira Expert</span>
-                  </span>
+                  {expert.verificationStatus === 'VERIFIED' && (
+                    <span className="inline-flex items-center gap-1 text-xs font-bold text-[#08E6F9] bg-[#08E6F9]/10 px-3 py-1 rounded-full border border-[#08E6F9]/40">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Verified Nexovira Expert</span>
+                    </span>
+                  )}
                 </div>
 
                 <p className="text-sm sm:text-base text-[#0682F4] font-semibold">

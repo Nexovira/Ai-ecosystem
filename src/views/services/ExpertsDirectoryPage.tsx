@@ -277,10 +277,12 @@ export const ExpertsDirectoryPage: React.FC = () => {
                           <h3 className="font-bold text-white text-base truncate">
                             {expert.fullName}
                           </h3>
-                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#08E6F9] bg-[#08E6F9]/10 px-2 py-0.5 rounded-full border border-[#08E6F9]/30">
-                            <CheckCircle2 className="w-3 h-3" />
-                            <span>Verified</span>
-                          </span>
+                          {expert.verificationStatus === 'VERIFIED' && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#08E6F9] bg-[#08E6F9]/10 px-2 py-0.5 rounded-full border border-[#08E6F9]/30">
+                              <CheckCircle2 className="w-3 h-3" />
+                              <span>Verified</span>
+                            </span>
+                          )}
                         </div>
                         <p className="text-xs text-[#0682F4] font-medium truncate mt-0.5">
                           {expert.professionalTitle}

@@ -3,15 +3,19 @@ import { appPromise } from '../server';
 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   try {
-    // When Vercel executes rewrites (e.g. /api/(.*) -> /api),
-    // Vercel stores the matched destination URL in x-matched-path or x-invoke-path.
-    // Ensure req.url reflects the full requested API path so Express routes match seamlessly.
-    const matchedPath =
-      (req.headers['x-matched-path'] as string) ||
-      (req.headers['x-invoke-path'] as string);
+    // In Vercel serverless functions, identify the authoritative requested path
+    const invokePath =
+      (req.headers['x-invoke-path'] as string) ||
+      (req.headers['x-forwarded-uri'] as string) ||
+      (req.headers['x-original-uri'] as string);
 
-    if (matchedPath && req.url !== matchedPath) {
-      req.url = matchedPath;
+    if (invokePath && invokePath !== '/api' && invokePath !== '/api/') {
+      req.url = invokePath;
+    } else {
+      const matchedPath = req.headers['x-matched-path'] as string;
+      if (matchedPath && matchedPath !== '/api' && matchedPath !== '/api/' && req.url !== matchedPath) {
+        req.url = matchedPath;
+      }
     }
 
     const app = await appPromise;
