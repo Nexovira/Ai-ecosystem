@@ -512,6 +512,34 @@ export const DigitalProductDetailPage: React.FC<DigitalProductDetailPageProps> =
                       </span>
                     </div>
 
+                    {/* Primary Read Ebook (Publuu Interactive Reader) */}
+                    {(() => {
+                      const readUrl =
+                        product.externalReadingUrl ||
+                        product.publuuUrl ||
+                        (product.externalFileUrl && product.externalFileUrl.includes('publuu.com') ? product.externalFileUrl : null) ||
+                        (product.productId?.includes('ai-driven') || product.slug?.includes('ai-driven')
+                          ? 'https://publuu.com/flip-book/1209759/2692765'
+                          : product.productId?.includes('website') || product.slug?.includes('website')
+                          ? 'https://publuu.com/flip-book/1209759/2692718'
+                          : null);
+
+                      if (!readUrl) return null;
+
+                      return (
+                        <a
+                          href={readUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full py-3 px-5 rounded-xl bg-gradient-to-r from-[#08E6F9] to-[#0682F4] hover:from-[#0682F4] hover:to-[#08E6F9] text-[#011B33] hover:text-white text-xs font-black transition flex items-center justify-center gap-2 shadow-lg cursor-pointer"
+                        >
+                          <BookOpen className="w-4 h-4 shrink-0" />
+                          <span>Read Ebook (Interactive Reader)</span>
+                          <ExternalLink className="w-3.5 h-3.5 shrink-0 opacity-80" />
+                        </a>
+                      );
+                    })()}
+
                     <button
                       onClick={handleDownload}
                       disabled={downloading}
@@ -525,7 +553,7 @@ export const DigitalProductDetailPage: React.FC<DigitalProductDetailPageProps> =
                       ) : (
                         <>
                           <Download className="w-4 h-4" />
-                          <span>Download Deliverable ({product.fileMetadata?.fileType?.toUpperCase()})</span>
+                          <span>Download Deliverable ({product.fileMetadata?.fileType?.toUpperCase() || 'PDF'})</span>
                         </>
                       )}
                     </button>

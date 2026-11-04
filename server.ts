@@ -67,14 +67,34 @@ export async function createApp(): Promise<express.Express> {
   // Apply Security Headers to every response
   app.use(applySecurityHeaders);
 
-  // Dynamic CORS & Preflight Handling for Cross-Domain Deployments (Vercel, Cloud Run, Custom Domains, Local Dev)
+  // Dynamic CORS & Preflight Handling with strict domain validation (Nexovira custom domains, Vercel, Cloud Run, Localhost)
+  function isAuthorizedOrigin(origin: string): boolean {
+    if (!origin) return false;
+    try {
+      const parsed = new URL(origin);
+      const host = parsed.hostname.toLowerCase();
+      return (
+        host === 'nexovira.com.ng' ||
+        host.endsWith('.nexovira.com.ng') ||
+        host.endsWith('.vercel.app') ||
+        host.endsWith('.run.app') ||
+        host.endsWith('.googleusercontent.com') ||
+        host === 'localhost' ||
+        host === '127.0.0.1'
+      );
+    } catch {
+      return false;
+    }
+  }
+
   app.use((req: Request, res: Response, next) => {
     const origin = req.headers.origin;
-    if (origin) {
+    if (origin && isAuthorizedOrigin(origin)) {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Access-Control-Allow-Credentials', 'true');
-    } else {
-      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Vary', 'Origin');
+    } else if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
     }
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
     res.setHeader(
@@ -416,7 +436,8 @@ export async function createApp(): Promise<express.Express> {
    * POST /api/services/expert/profile
    * Expert profile onboarding/update (for users with EXPERT role)
    */
-  app.post('/api/services/expert/profile', async (req: Request, res: Response) => {
+  app.post(['/api/services/expert/profile', '/services/expert/profile'], async (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
     try {
       const userId = (req.headers['x-user-id'] as string) || (req.body.userId as string);
       const userRole = (req.headers['x-user-role'] as string) || (req.body.userRole as string);
@@ -449,7 +470,8 @@ export async function createApp(): Promise<express.Express> {
    * POST /api/services/expert/apply
    * Submit application to join Nexovira Ecosystem as an Expert
    */
-  app.post('/api/services/expert/apply', async (req: Request, res: Response) => {
+  app.post(['/api/services/expert/apply', '/services/expert/apply'], async (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
     try {
       const userId = (req.headers['x-user-id'] as string) || req.body.userId;
       if (!userId) {

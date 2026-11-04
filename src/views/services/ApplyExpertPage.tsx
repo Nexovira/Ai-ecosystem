@@ -36,6 +36,7 @@ export const ApplyExpertPage: React.FC = () => {
 
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [submitted, setSubmitted] = useState<boolean>(false);
+  const [submittedMessage, setSubmittedMessage] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleAddSkill = () => {
@@ -107,6 +108,9 @@ export const ApplyExpertPage: React.FC = () => {
       });
 
       if (res.success) {
+        if ((res as any).message) {
+          setSubmittedMessage((res as any).message);
+        }
         setSubmitted(true);
       } else {
         setErrorMessage(res.error || 'Failed to submit application.');
@@ -129,7 +133,11 @@ export const ApplyExpertPage: React.FC = () => {
             Application Received
           </h1>
           <p className="text-xs sm:text-sm text-[#CCD2D9] leading-relaxed">
-            Thank you for applying to join the Nexovira Technology Ecosystem. Your application has been registered with status <strong className="text-amber-400">PENDING_REVIEW</strong>. Nexovira management will review your portfolio and reach out regarding role clearance.
+            {submittedMessage || (
+              <>
+                Thank you for applying to join the Nexovira Technology Ecosystem. Your application has been registered with status <strong className="text-amber-400">PENDING_REVIEW</strong>. Nexovira management will review your portfolio and reach out regarding role clearance.
+              </>
+            )}
           </p>
           <div className="pt-4 flex justify-center gap-3">
             <Button variant="primary" onClick={() => navigate('/services')}>

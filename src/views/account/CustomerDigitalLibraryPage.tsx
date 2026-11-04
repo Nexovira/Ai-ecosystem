@@ -281,20 +281,48 @@ export const CustomerDigitalLibraryPage: React.FC = () => {
 
                   {/* Actions Area */}
                   <div className="pt-3 border-t border-[#0682F4]/20 space-y-2.5">
+                    {/* Primary Read Ebook (Publuu Interactive Reader) */}
+                    {(() => {
+                      const readUrl =
+                        ent.externalReadingUrl ||
+                        ent.publuuUrl ||
+                        (ent.externalFileUrl && ent.externalFileUrl.includes('publuu.com') ? ent.externalFileUrl : null) ||
+                        (ent.productId.includes('ai-driven') || ent.productSlug?.includes('ai-driven')
+                          ? 'https://publuu.com/flip-book/1209759/2692765'
+                          : ent.productId.includes('website') || ent.productSlug?.includes('website')
+                          ? 'https://publuu.com/flip-book/1209759/2692718'
+                          : null);
+
+                      if (!readUrl) return null;
+
+                      return (
+                        <a
+                          href={readUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-[#08E6F9] to-[#0682F4] hover:from-[#0682F4] hover:to-[#08E6F9] text-[#011B33] hover:text-white font-black text-xs transition flex items-center justify-center gap-2 shadow-lg cursor-pointer"
+                        >
+                          <BookOpen className="w-4 h-4 shrink-0" />
+                          <span>Read Ebook (Flip-Book Reader)</span>
+                          <ExternalLink className="w-3.5 h-3.5 shrink-0 opacity-80" />
+                        </a>
+                      );
+                    })()}
+
                     <button
                       onClick={() => handleDownload(ent)}
                       disabled={downloadingId === ent.productId}
-                      className="w-full py-2.5 px-4 rounded-xl bg-[#0682F4] hover:bg-[#05A9F7] text-white text-xs font-bold transition flex items-center justify-center gap-2 shadow cursor-pointer disabled:opacity-50"
+                      className="w-full py-2.5 px-4 rounded-xl bg-[#01213D] hover:bg-[#011B33] border border-[#0682F4]/40 hover:border-[#08E6F9] text-white text-xs font-bold transition flex items-center justify-center gap-2 shadow cursor-pointer disabled:opacity-50"
                     >
                       {downloadingId === ent.productId ? (
                         <>
                           <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          <span>Preparing Download...</span>
+                          <span>Preparing Deliverable...</span>
                         </>
                       ) : (
                         <>
-                          <Download className="w-3.5 h-3.5" />
-                          <span>Download Deliverable</span>
+                          <Download className="w-3.5 h-3.5 text-[#08E6F9]" />
+                          <span>Download Deliverable (PDF)</span>
                         </>
                       )}
                     </button>

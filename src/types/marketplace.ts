@@ -45,6 +45,11 @@ export interface Product {
   productImages: ProductImage[];
   specifications: ProductSpecification[];
   variants?: ProductVariant[];
+  isDigital?: boolean;
+  externalReadingUrl?: string;
+  publuuUrl?: string;
+  rating?: number;
+  reviewCount?: number;
   createdAt: string;
   updatedAt: string;
   publishedAt?: string;

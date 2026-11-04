@@ -132,9 +132,9 @@ const MainRouterView: React.FC = () => {
     return <DigitalProductDetailPage slug={slug} />;
   }
 
-  // Handle Product Detail Routes /marketplace/product/:slug
-  if (currentPath.startsWith('/marketplace/product/')) {
-    const slug = currentPath.replace('/marketplace/product/', '').split('?')[0];
+  // Handle Product Detail Routes (/marketplace/product/:slug and /product/:slug)
+  if (currentPath.startsWith('/marketplace/product/') || currentPath.startsWith('/product/')) {
+    const slug = currentPath.replace('/marketplace/product/', '').replace('/product/', '').split('?')[0];
     return <ProductDetailPage slug={slug} />;
   }
 

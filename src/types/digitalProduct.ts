@@ -59,6 +59,8 @@ export interface DigitalProduct {
   fileMetadata: DigitalFileMetadata;
   storagePath: string; // Internal protected storage reference - NOT exposed publicly
   externalFileUrl?: string; // Authoritative URL for deliverable ebook / PDF / file
+  externalReadingUrl?: string; // Dedicated web/flip-book reader URL (e.g. Publuu)
+  publuuUrl?: string; // Publuu reading URL
   downloadLimit: number; // 0 or -1 for unlimited, or e.g. 10
   affiliateEligible: boolean;
   commissionRate?: number; // e.g. 10 = 10%
@@ -97,6 +99,9 @@ export interface DigitalEntitlement {
   downloadCount: number;
   maxDownloads: number; // -1 for unlimited
   fileVersion: string;
+  externalReadingUrl?: string;
+  externalFileUrl?: string;
+  publuuUrl?: string;
   grantedAt: string;
   revokedAt?: string;
   lastDownloadedAt?: string;

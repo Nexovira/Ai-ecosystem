@@ -639,16 +639,31 @@ class ServicesService {
 
     // 2. Persist to expertApplications collection if exists
     const appDocId = `app-exp-${expert.userId}`;
+    const appStatus = status === 'VERIFIED' ? 'APPROVED' : status === 'REJECTED' ? 'REJECTED' : 'PENDING_REVIEW';
     setDoc(doc(db, 'expertApplications', appDocId), sanitizeFirestoreData({
-      status: status === 'VERIFIED' ? 'APPROVED' : status === 'REJECTED' ? 'REJECTED' : 'PENDING_REVIEW',
+      status: appStatus,
       updatedAt: expert.updatedAt,
     }), { merge: true }).catch(() => {});
+    setDoc(doc(db, 'expertApplications', expert.userId), sanitizeFirestoreData({
+      status: appStatus,
+      updatedAt: expert.updatedAt,
+    }), { merge: true }).catch(() => {});
+
+    // Also synchronize roleApplications collection for Unified Admin Oversight
+    const roleAppId = `roleapp_${expert.userId}_expert`;
+    setDoc(doc(db, 'roleApplications', roleAppId), {
+      status: appStatus,
+      reviewedAt: expert.updatedAt,
+      reviewedBy: 'Management Specialist Verification',
+      updatedAt: expert.updatedAt,
+    }, { merge: true }).catch(() => {});
 
     // 3. Authoritatively update user role in users collection to keep permissions persistent across login/logout!
     if (expert.userId) {
       const targetRole = status === 'VERIFIED' ? 'EXPERT' : 'CUSTOMER';
       setDoc(doc(db, 'users', expert.userId), {
         role: targetRole,
+        pendingRole: status === 'VERIFIED' ? null : (status === 'REJECTED' ? null : 'EXPERT'),
         updatedAt: expert.updatedAt,
       }, { merge: true }).catch((err) => {
         console.warn('Firestore user role sync notice:', err);
@@ -855,14 +870,27 @@ class ServicesService {
   async submitExpertApplication(
     userId: string,
     data: Omit<ExpertApplication, 'applicationId' | 'userId' | 'status' | 'submittedAt' | 'updatedAt'>
-  ): Promise<{ success: boolean; application?: ExpertApplication; error?: string }> {
+  ): Promise<{ success: boolean; application?: ExpertApplication; message?: string; error?: string }> {
     if (!data.fullName || !data.email || !data.professionalTitle || !data.bio) {
       return { success: false, error: 'All primary professional details are required.' };
     }
 
     const applicationId = `app-exp-${userId}`;
+    const roleApplicationId = `roleapp_${userId}_expert`;
     const expertId = `exp-${userId.slice(0, 10)}`;
     const now = new Date().toISOString();
+
+    // Prevent duplicate pending applications
+    const existing = this.applicationsCache.find(
+      (a) => (a.userId === userId || a.applicationId === applicationId) && a.status === 'PENDING_REVIEW'
+    );
+    if (existing) {
+      return {
+        success: true,
+        application: existing,
+        message: 'Your specialist application is already submitted and is currently under review by management.',
+      };
+    }
 
     const application: ExpertApplication = {
       applicationId,
@@ -882,19 +910,58 @@ class ServicesService {
       updatedAt: now,
     };
 
-    const idx = this.applicationsCache.findIndex((a) => a.applicationId === applicationId);
+    const idx = this.applicationsCache.findIndex((a) => a.applicationId === applicationId || a.userId === userId);
     if (idx >= 0) {
       this.applicationsCache[idx] = application;
     } else {
       this.applicationsCache.push(application);
     }
 
-    // Persist application
-    setDoc(doc(db, 'expertApplications', applicationId), sanitizeFirestoreData(application), { merge: true }).catch((err) => {
-      console.warn('Firestore expertApplication write notice:', err);
-    });
+    // 1. Persist application to expertApplications collection (by app-exp-id and user-id)
+    if (db) {
+      setDoc(doc(db, 'expertApplications', applicationId), sanitizeFirestoreData(application), { merge: true }).catch((err) => {
+        console.warn('Firestore expertApplication write notice:', err);
+      });
+      setDoc(doc(db, 'expertApplications', userId), sanitizeFirestoreData(application), { merge: true }).catch(() => {});
+    }
 
-    // Also register pending expert profile in experts collection
+    // 2. Persist to roleApplications for unified Management Dashboard view
+    const roleAppPayload = {
+      applicationId: roleApplicationId,
+      userId,
+      userEmail: application.email,
+      userName: application.fullName,
+      currentRole: 'CUSTOMER',
+      targetRole: 'EXPERT',
+      status: 'PENDING_REVIEW',
+      reason: application.bio,
+      skills: application.skills,
+      portfolioUrl: application.portfolioLinks[0]?.url || '',
+      professionalTitle: application.professionalTitle,
+      location: application.location,
+      yearsOfExperience: application.yearsOfExperience,
+      serviceCategories: application.serviceCategories,
+      createdAt: now,
+      updatedAt: now,
+    };
+    if (db) {
+      setDoc(doc(db, 'roleApplications', roleApplicationId), sanitizeFirestoreData(roleAppPayload), { merge: true }).catch((err) => {
+        console.warn('Firestore roleApplication write notice:', err);
+      });
+    }
+
+    // 3. Update users profile document so pending status is immediately recognized
+    if (db) {
+      setDoc(doc(db, 'users', userId), {
+        pendingRole: 'EXPERT',
+        roleApplicationId,
+        updatedAt: now,
+      }, { merge: true }).catch((err) => {
+        console.warn('Firestore user profile pending role update notice:', err);
+      });
+    }
+
+    // 4. Also register pending expert profile in experts collection
     const expertProfile: ExpertProfile = {
       expertId,
       userId,
@@ -924,11 +991,28 @@ class ServicesService {
       this.expertsCache.push(expertProfile);
     }
 
-    setDoc(doc(db, 'experts', expertId), sanitizeFirestoreData(expertProfile), { merge: true }).catch((err) => {
-      console.warn('Firestore pending expert write notice:', err);
-    });
+    if (db) {
+      setDoc(doc(db, 'experts', expertId), sanitizeFirestoreData(expertProfile), { merge: true }).catch((err) => {
+        console.warn('Firestore pending expert write notice:', err);
+      });
+    }
 
-    return { success: true, application };
+    // 5. Audit log
+    this.recordAuditLog(
+      userId,
+      data.email,
+      'EXPERT_APPLICATION_SUBMITTED',
+      'EXPERT',
+      expertId,
+      '',
+      JSON.stringify(application)
+    );
+
+    return {
+      success: true,
+      application,
+      message: 'Your specialist application has been submitted successfully and is pending review by management.',
+    };
   }
 
   // ==========================================

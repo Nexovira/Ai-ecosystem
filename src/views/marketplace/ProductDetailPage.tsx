@@ -426,6 +426,18 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ slug }) =>
                     <Heart className={`w-4 h-4 ${wishlisted ? 'fill-[#08E6F9]' : ''}`} />
                   </button>
                 </div>
+
+                {(product.externalReadingUrl || product.publuuUrl) && (
+                  <a
+                    href={product.externalReadingUrl || product.publuuUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-[#08E6F9] to-[#0682F4] text-[#011B33] hover:text-white font-black text-xs transition flex items-center justify-center gap-2 shadow cursor-pointer mt-2"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Preview / Read Flip-Book Online</span>
+                  </a>
+                )}
               </div>
 
               {/* Seller & Verification Metadata Card */}
