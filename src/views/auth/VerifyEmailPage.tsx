@@ -36,9 +36,15 @@ export const VerifyEmailPage: React.FC = () => {
           if (res.success) {
             setFeedback({
               type: 'success',
-              message: res.message || 'Your email address has been successfully verified! Account active.',
+              message: res.message || 'Your email address has been successfully verified! Redirecting to Nexovira...',
             });
-            setTimeout(() => navigate('/account'), 1500);
+            setTimeout(() => {
+              if (typeof window !== 'undefined') {
+                window.location.href = 'https://nexovira.name.ng/account';
+              } else {
+                navigate('/account');
+              }
+            }, 1500);
           } else {
             setFeedback({
               type: 'error',
@@ -81,8 +87,14 @@ export const VerifyEmailPage: React.FC = () => {
     setChecking(false);
 
     if (isVerified) {
-      setFeedback({ type: 'success', message: 'Email confirmed! Your account is fully active. Redirecting...' });
-      setTimeout(() => navigate('/account'), 1200);
+      setFeedback({ type: 'success', message: 'Email confirmed! Your account is fully active. Redirecting to Nexovira...' });
+      setTimeout(() => {
+        if (typeof window !== 'undefined') {
+          window.location.href = 'https://nexovira.name.ng/account';
+        } else {
+          navigate('/account');
+        }
+      }, 1200);
     } else {
       setFeedback({
         type: 'error',
@@ -162,9 +174,15 @@ export const VerifyEmailPage: React.FC = () => {
                     variant="primary"
                     size="md"
                     fullWidth
-                    onClick={() => navigate('/account')}
+                    onClick={() => {
+                      if (typeof window !== 'undefined') {
+                        window.location.href = 'https://nexovira.name.ng/account';
+                      } else {
+                        navigate('/account');
+                      }
+                    }}
                   >
-                    <span>Proceed to Account Hub</span>
+                    <span>Proceed to Nexovira (nexovira.name.ng)</span>
                     <ArrowRight className="w-4 h-4" />
                   </Button>
                 </div>

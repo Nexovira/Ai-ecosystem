@@ -5,6 +5,7 @@ import { useServices } from '../../context/ServicesContext';
 import { Button } from '../../components/common/Button';
 import { ManagementLayout } from '../../components/management/ManagementLayout';
 import { ProjectStatusBadge } from '../../components/services/ProjectStatusBadge';
+import { ExpertAvatar } from '../../components/services/ExpertAvatar';
 import { ProjectRequestStatus, ExpertVerificationStatus, ServiceCategory, ProjectRequest, ExpertProfile, ExpertAvailability } from '../../types/services';
 import {
   Shield,
@@ -687,9 +688,12 @@ export const ManagementServicesPage: React.FC = () => {
                   >
                     <div>
                       <div className="flex items-start gap-3.5 mb-3.5">
-                        <div className="w-13 h-13 rounded-2xl bg-gradient-to-br from-[#08E6F9]/20 to-[#0682F4]/30 border border-[#08E6F9]/40 flex items-center justify-center font-bold text-xl text-[#08E6F9] shrink-0 shadow-inner">
-                          {exp.fullName ? exp.fullName.charAt(0).toUpperCase() : 'E'}
-                        </div>
+                        <ExpertAvatar
+                          fullName={exp.fullName}
+                          profileImage={exp.profileImage}
+                          size="md"
+                          className="w-13 h-13"
+                        />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <h3 className="font-bold text-white text-base truncate">{exp.fullName}</h3>

@@ -212,11 +212,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       let emailError: string | undefined = undefined;
       const cleanEmail = (newUser.email || email).trim().toLowerCase();
       try {
-        const origin = typeof window !== 'undefined' && window.location.origin
-          ? window.location.origin
-          : 'https://nexovira.com';
+        const postVerificationTarget = 'https://nexovira.name.ng';
         const actionCodeSettings = {
-          url: `${origin}/verify-email?email=${encodeURIComponent(cleanEmail)}`,
+          url: `${postVerificationTarget}/verify-email?email=${encodeURIComponent(cleanEmail)}`,
           handleCodeInApp: true,
         };
         try {
@@ -644,12 +642,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: false, error: 'No active session found. Please sign in to request a verification email.' };
     }
     try {
-      const origin = typeof window !== 'undefined' && window.location.origin
-        ? window.location.origin
-        : 'https://nexovira.com';
+      const postVerificationTarget = 'https://nexovira.name.ng';
       const cleanEmail = auth.currentUser.email || '';
       const actionCodeSettings = {
-        url: `${origin}/verify-email?email=${encodeURIComponent(cleanEmail)}`,
+        url: `${postVerificationTarget}/verify-email?email=${encodeURIComponent(cleanEmail)}`,
         handleCodeInApp: true,
       };
       try {

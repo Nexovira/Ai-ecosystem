@@ -29,6 +29,7 @@ export const Header: React.FC = () => {
   const primaryNavLinks: { label: string; path: RoutePath }[] = [
     { label: 'Home', path: '/' },
     { label: 'Marketplace', path: '/marketplace' },
+    { label: 'Digital Products', path: '/digital-products' },
     { label: 'Tech & Services', path: '/services' },
     { label: 'Academy', path: '/academy' },
     { label: 'About', path: '/about' },
@@ -36,7 +37,6 @@ export const Header: React.FC = () => {
 
   const moreLinks: { label: string; path: RoutePath; description: string }[] = [
     { label: 'Affiliate Program', path: '/affiliate', description: 'Promote eligible offers and earn commissions' },
-    { label: 'Digital Products', path: '/digital-products', description: 'Guides, ebooks, and digital resources' },
     { label: 'AI Ecosystem', path: '/ai', description: 'Integrated artificial intelligence services' },
   ];
 

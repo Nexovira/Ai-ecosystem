@@ -140,6 +140,26 @@ export const MarketplaceHome: React.FC = () => {
               );
             })}
           </div>
+
+          {/* Dedicated Digital Products Callout */}
+          <div className="mt-8 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-[#011B33] via-[#01213D] to-[#011B33] border border-[#0682F4]/30 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#08E6F9] uppercase tracking-wider font-mono">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Dedicated Section: Nexovira Digital Products & Ebooks</span>
+              </div>
+              <p className="text-xs sm:text-sm text-[#CCD2D9]">
+                Looking for <strong className="text-white">The AI-Driven Business Blueprint</strong> or <strong className="text-white">Build A Website For Free From Your Phone</strong>? Explore our specialized digital library with instant delivery.
+              </p>
+            </div>
+            <button
+              onClick={() => navigate('/digital-products')}
+              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#08E6F9] to-[#0682F4] text-[#011B33] hover:text-white font-bold text-xs transition flex items-center justify-center gap-2 shrink-0 cursor-pointer shadow"
+            >
+              <span>Explore Digital Products</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </Container>
       </div>
 
