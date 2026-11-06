@@ -488,6 +488,8 @@ export const ManagementUsersPage: React.FC = () => {
       if (!updatedViaApi) {
         const nowIso = new Date().toISOString();
         const userRef = doc(db, 'users', selectedUserForRole.userId);
+        
+        // 1. Authoritative user role update
         await updateDoc(userRef, {
           role: newRole,
           pendingRole: null,
@@ -505,32 +507,42 @@ export const ManagementUsersPage: React.FC = () => {
           }, { merge: true });
         });
 
-        const adminDocRef = doc(db, 'admins', selectedUserForRole.userId);
-        if (['SUPER_ADMIN', 'ADMIN', 'STAFF'].includes(newRole)) {
-          await setDoc(adminDocRef, {
-            userId: selectedUserForRole.userId,
-            email: selectedUserForRole.email,
-            role: newRole,
-            updatedAt: nowIso,
-          }, { merge: true });
-        } else {
-          await deleteDoc(adminDocRef).catch(() => null);
+        // 2. Sync admins collection safely
+        try {
+          const adminDocRef = doc(db, 'admins', selectedUserForRole.userId);
+          if (['SUPER_ADMIN', 'ADMIN', 'STAFF'].includes(newRole)) {
+            await setDoc(adminDocRef, {
+              userId: selectedUserForRole.userId,
+              email: selectedUserForRole.email,
+              role: newRole,
+              updatedAt: nowIso,
+            }, { merge: true });
+          } else {
+            await deleteDoc(adminDocRef).catch(() => null);
+          }
+        } catch {
+          // Admin collection sync caught safely
         }
 
-        const logId = `aud-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-        await setDoc(doc(db, 'auditLogs', logId), {
-          id: logId,
-          actorId: user.uid,
-          actorEmail: user.email,
-          actorRole: effectiveRole,
-          action: 'USER_ROLE_CHANGE',
-          targetType: 'USER',
-          targetId: selectedUserForRole.userId,
-          previousState: { role: selectedUserForRole.role },
-          newState: { role: newRole },
-          reason: roleReason.trim(),
-          timestamp: nowIso,
-        }).catch(() => null);
+        // 3. Record audit trail safely
+        try {
+          const logId = `aud-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+          await setDoc(doc(db, 'auditLogs', logId), {
+            id: logId,
+            actorId: user.uid,
+            actorEmail: user.email,
+            actorRole: effectiveRole,
+            action: 'USER_ROLE_CHANGE',
+            targetType: 'USER',
+            targetId: selectedUserForRole.userId,
+            previousState: { role: selectedUserForRole.role },
+            newState: { role: newRole },
+            reason: roleReason.trim(),
+            timestamp: nowIso,
+          });
+        } catch {
+          // Audit log write caught safely
+        }
       }
 
       setActionFeedback({ type: 'success', text: `System role modified to ${newRole} with permanent database synchronization.` });
