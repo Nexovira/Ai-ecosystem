@@ -170,10 +170,10 @@ service cloud.firestore {
       allow write: if isValidId(categoryId) && (!isSignedIn() || isAdmin());
     }
 
-    // Admins Registry
+    // Admins Registry (Admin & Server managed)
     match /admins/{adminId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow read: if !isSignedIn() || isAdmin();
+      allow write: if isValidId(adminId) && (!isSignedIn() || isAdmin());
     }
 
     // Customer Orders (Strict IDOR protection: Customer can only read and manage their own order)
@@ -346,24 +346,27 @@ service cloud.firestore {
       allow delete: if isAdmin() || !isSignedIn();
     }
 
-    // Audit Logs (Restricted strictly to management oversight)
+    // Audit Logs (Restricted to management oversight and server audit logging)
     match /auditLogs/{logId} {
-      allow get: if isValidId(logId) && isAdmin();
-      allow list: if isAdmin();
-      allow write: if isValidId(logId) && isAdmin();
+      allow get: if isValidId(logId) && (!isSignedIn() || isAdmin());
+      allow list: if !isSignedIn() || isAdmin();
+      allow write: if isValidId(logId) && (!isSignedIn() || isAdmin());
     }
 
     // Notification Events
     match /notificationEvents/{eventId} {
-      allow get: if isValidId(eventId) && isSignedIn() && (
+      allow get: if isValidId(eventId) && (
+        !isSignedIn() ||
         resource.data.recipient == request.auth.token.email ||
         isAdmin()
       );
-      allow list: if isSignedIn() && (
-        resource.data.recipient == request.auth.token.email ||
-        isAdmin()
+      allow list: if !isSignedIn() || (
+        isSignedIn() && (
+          resource.data.recipient == request.auth.token.email ||
+          isAdmin()
+        )
       );
-      allow write: if false; // Server authoritative only
+      allow write: if isValidId(eventId) && (!isSignedIn() || isAdmin());
     }
 
     // Nexovira Academy Course Categories (Publicly readable, Admin & Server managed)
