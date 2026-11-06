@@ -76,6 +76,8 @@ export async function createApp(): Promise<express.Express> {
       return (
         host === 'nexovira.com.ng' ||
         host.endsWith('.nexovira.com.ng') ||
+        host === 'nexovira.name.ng' ||
+        host.endsWith('.nexovira.name.ng') ||
         host.endsWith('.vercel.app') ||
         host.endsWith('.run.app') ||
         host.endsWith('.googleusercontent.com') ||

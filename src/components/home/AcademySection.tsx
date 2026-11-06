@@ -1,14 +1,19 @@
 import React from 'react';
 import { ArrowRight, GraduationCap, Clock, Award, BookOpen, User } from 'lucide-react';
 import { useRouter } from '../../context/RouterContext';
-import { INITIAL_COURSES } from '../../data/academyCatalog';
+import { useAcademy } from '../../context/AcademyContext';
 import { Button } from '../common/Button';
 
 export const AcademySection: React.FC = () => {
   const { navigate } = useRouter();
+  const { courses, loadingCourses } = useAcademy();
 
-  // Top 3 featured courses
-  const featuredCourses = INITIAL_COURSES.slice(0, 3);
+  // Top 3 featured courses from authoritative Firestore state
+  const featuredCourses = courses.slice(0, 3);
+
+  if (!loadingCourses && featuredCourses.length === 0) {
+    return null; // Clean empty state: do not display if no courses published
+  }
 
   return (
     <section className="py-16 sm:py-24 bg-[#F7F8FA] border-b border-[#E8EDF2]">

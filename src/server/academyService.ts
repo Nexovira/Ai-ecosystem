@@ -26,16 +26,6 @@ export class AcademyService {
   private isInitialized = false;
 
   constructor() {
-    INITIAL_COURSES.forEach((c) => {
-      if (!antiResurrectionService.isTombstoned('course', c.courseId)) {
-        this.courses.set(c.courseId, c);
-      }
-    });
-    INITIAL_COURSE_CATEGORIES.forEach((cat) => {
-      if (!antiResurrectionService.isTombstoned('course_category', cat.id)) {
-        this.categories.set(cat.id, cat);
-      }
-    });
     this.seedData();
   }
 
@@ -86,24 +76,7 @@ export class AcademyService {
         }
       }
     } catch {
-      // In-memory defaults are safe and active
-    }
-
-    // If Firestore has not been seeded yet, populate initial catalog while strictly respecting anti-resurrection tombstones
-    if (this.courses.size === 0) {
-      INITIAL_COURSES.forEach((c) => {
-        if (!antiResurrectionService.isTombstoned('course', c.courseId)) {
-          this.courses.set(c.courseId, c);
-        }
-      });
-    }
-
-    if (this.categories.size === 0) {
-      INITIAL_COURSE_CATEGORIES.forEach((cat) => {
-        if (!antiResurrectionService.isTombstoned('course_category', cat.id)) {
-          this.categories.set(cat.id, cat);
-        }
-      });
+      // Handled safely
     }
 
     this.isInitialized = true;

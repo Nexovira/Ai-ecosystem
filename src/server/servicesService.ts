@@ -33,14 +33,10 @@ import { notificationService } from './notificationService';
 import { sanitizeFirestoreData } from '../utils/productNormalization';
 import { antiResurrectionService } from './antiResurrectionService';
 
-// In-memory runtime caching to guarantee 100% responsiveness and smooth fallbacks
+// In-memory runtime caching backed by Firestore as single source of truth
 class ServicesService {
-  private categoriesCache: ServiceCategory[] = INITIAL_SERVICE_CATEGORIES.filter(
-    (c) => !antiResurrectionService.isTombstoned('service_category', c.id)
-  );
-  private expertsCache: ExpertProfile[] = INITIAL_EXPERTS.filter(
-    (e) => !antiResurrectionService.isTombstoned('expert', e.expertId)
-  );
+  private categoriesCache: ServiceCategory[] = [];
+  private expertsCache: ExpertProfile[] = [];
   private requestsCache: ProjectRequest[] = [];
   private updatesCache: Record<string, ProjectUpdate[]> = {};
   private applicationsCache: ExpertApplication[] = [];
@@ -53,24 +49,13 @@ class ServicesService {
 
   private async seedInitialData() {
     try {
-      // Safely load any dynamically configured service categories from Firestore
+      // Safely load service categories from Firestore
       const catRef = collection(db, 'serviceCategories');
       const snap = await getDocs(catRef);
       if (!snap.empty) {
+        this.categoriesCache = [];
         snap.forEach((docSnap) => {
           const cat = docSnap.data() as ServiceCategory;
-          if (!antiResurrectionService.isTombstoned('service_category', cat.id)) {
-            const idx = this.categoriesCache.findIndex((c) => c.id === cat.id || c.slug === cat.slug);
-            if (idx >= 0) {
-              this.categoriesCache[idx] = cat;
-            } else {
-              this.categoriesCache.push(cat);
-            }
-          }
-        });
-      }
-      if (this.categoriesCache.length === 0) {
-        INITIAL_SERVICE_CATEGORIES.forEach((cat) => {
           if (!antiResurrectionService.isTombstoned('service_category', cat.id)) {
             this.categoriesCache.push(cat);
           }
@@ -81,29 +66,19 @@ class ServicesService {
     }
 
     try {
-      // Safely load any custom expert profiles from Firestore
+      // Safely load expert profiles from Firestore
       const expRef = collection(db, 'experts');
       const expSnap = await getDocs(expRef);
       if (!expSnap.empty) {
+        this.expertsCache = [];
         expSnap.forEach((docSnap) => {
           const exp = docSnap.data() as ExpertProfile;
-          if (!antiResurrectionService.isTombstoned('expert', exp.expertId)) {
-            const idx = this.expertsCache.findIndex((e) => e.expertId === exp.expertId);
-            if (idx >= 0) {
-              this.expertsCache[idx] = exp;
-            } else {
-              this.expertsCache.push(exp);
-            }
-          }
-        });
-      }
-
-      if (this.expertsCache.length === 0) {
-        INITIAL_EXPERTS.forEach((exp) => {
           if (!antiResurrectionService.isTombstoned('expert', exp.expertId)) {
             this.expertsCache.push(exp);
           }
         });
+      } else {
+        this.expertsCache = [];
       }
     } catch {
       // Firestore load notice

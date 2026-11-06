@@ -139,13 +139,6 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
           }
         });
       }
-      if (loadedProducts.length === 0) {
-        INITIAL_PRODUCTS.forEach((prod) => {
-          if (!tombstoneIds.has(prod.productId)) {
-            loadedProducts.push(prod);
-          }
-        });
-      }
       setProducts(loadedProducts);
 
       // 3. Categories from Firestore authoritative source
@@ -155,14 +148,6 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
       if (!catSnap.empty) {
         catSnap.forEach((d) => {
           const cat = d.data() as Category;
-          if (!tombstoneIds.has(cat.categoryId) && !tombstoneIds.has(`product_category_${cat.categoryId}`)) {
-            loadedCats.push(cat);
-          }
-        });
-        loadedCats.sort((a, b) => (a.order || 0) - (b.order || 0));
-      }
-      if (loadedCats.length === 0) {
-        INITIAL_CATEGORIES.forEach((cat) => {
           if (!tombstoneIds.has(cat.categoryId) && !tombstoneIds.has(`product_category_${cat.categoryId}`)) {
             loadedCats.push(cat);
           }

@@ -69,8 +69,6 @@ export class DigitalProductService {
   private isInitialized = false;
 
   constructor() {
-    this.seedInitialCategories();
-    this.seedInitialProducts();
     this.init().catch(() => {
       // Background init handled safely
     });

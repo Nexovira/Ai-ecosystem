@@ -865,6 +865,63 @@ export const ManagementDigitalProductsPage: React.FC = () => {
                 />
               </div>
 
+              {/* Cover Image URL input with external host validation and preview */}
+              <div className="space-y-2 p-3 rounded-xl bg-[#011426] border border-[#0682F4]/30">
+                <label className="block text-white font-semibold flex items-center justify-between">
+                  <span>Cover Image URL (e.g., Cloudinary, Unsplash, or CDN)</span>
+                  <span className="text-[10px] text-[#08E6F9] font-mono">External URL</span>
+                </label>
+                <input
+                  type="url"
+                  value={editingProduct.coverImage || ''}
+                  onChange={(e) => setEditingProduct({ ...editingProduct, coverImage: e.target.value })}
+                  placeholder="https://res.cloudinary.com/... or https://..."
+                  className="w-full bg-[#01213D] border border-[#0682F4]/30 rounded-lg p-2.5 text-white font-mono text-xs focus:outline-none focus:border-[#08E6F9]"
+                />
+                {editingProduct.coverImage && (
+                  <div className="flex items-center gap-3 pt-1">
+                    <img
+                      src={editingProduct.coverImage}
+                      alt="Cover Preview"
+                      className="w-16 h-20 object-cover rounded-lg border border-[#0682F4]/40"
+                      onError={(e) => {
+                        (e.target as HTMLElement).style.display = 'none';
+                      }}
+                    />
+                    <div className="text-[11px] text-[#CCD2D9]">
+                      <p className="font-semibold text-white">Cover Preview Verified</p>
+                      <p className="text-[10px] text-[#CCD2D9]/60 truncate max-w-xs">{editingProduct.coverImage}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* External Reading / Publuu Flipbook Link (Access after payment only) */}
+              <div className="space-y-2 p-3 rounded-xl bg-[#011426] border border-[#0682F4]/30">
+                <label className="block text-white font-semibold flex items-center justify-between">
+                  <span>External Reading Link (Publuu Flip-Book / Online Reader)</span>
+                  <span className="text-[10px] text-amber-400 font-mono">Payment-Gated</span>
+                </label>
+                <input
+                  type="url"
+                  value={editingProduct.externalReadingUrl || editingProduct.publuuUrl || ''}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setEditingProduct({
+                      ...editingProduct,
+                      externalReadingUrl: val,
+                      publuuUrl: val,
+                      externalFileUrl: editingProduct.externalFileUrl || val,
+                    });
+                  }}
+                  placeholder="https://publuu.com/flip-book/..."
+                  className="w-full bg-[#01213D] border border-[#0682F4]/30 rounded-lg p-2.5 text-white font-mono text-xs focus:outline-none focus:border-[#08E6F9]"
+                />
+                <p className="text-[10px] text-[#CCD2D9]/70">
+                  Protected: Customers only receive and access this reading link after successful payment confirmation.
+                </p>
+              </div>
+
               {/* File Upload to Firebase Storage */}
               <div className="space-y-2 p-3 rounded-xl bg-[#011426] border border-[#0682F4]/30">
                 <div className="flex items-center justify-between">

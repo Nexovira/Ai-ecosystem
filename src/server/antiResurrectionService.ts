@@ -86,9 +86,6 @@ export class AntiResurrectionService {
       }
 
       this.isLoaded = true;
-
-      // 2. Perform strictly idempotent one-time canonical database bootstrap
-      await this.ensureDatabaseSeededOnce();
     } catch (err) {
       console.error('[AntiResurrectionService] Init error:', err);
     }
@@ -180,83 +177,6 @@ export class AntiResurrectionService {
     } catch (err) {
       console.error(`[AntiResurrectionService] Failed to remove tombstone ${tombstoneId}:`, err);
       return false;
-    }
-  }
-
-  /**
-   * Canonical database bootstrap. Runs ONLY ONCE in the lifetime of the database.
-   * If system/bootstrap exists in Firestore, it NEVER runs again, preventing code
-   * from resetting or resurrecting deleted production records.
-   */
-  public async ensureDatabaseSeededOnce(): Promise<void> {
-    if (this.isSeeding) return;
-    this.isSeeding = true;
-
-    try {
-      // Check system/bootstrap document in Firestore
-      const bootDoc = await getDoc(doc(db, 'system', 'bootstrap')).catch(() => null);
-      if (bootDoc && bootDoc.exists() && bootDoc.data()?.initialized) {
-        // Database already initialized! NEVER re-seed!
-        return;
-      }
-
-      console.log('[AntiResurrectionService] First-time database bootstrap initiated. Hydrating Firestore authoritative collections...');
-
-      // 1. Seed Categories
-      for (const cat of INITIAL_CATEGORIES) {
-        if (!this.isTombstoned('category', cat.categoryId)) {
-          await setDoc(doc(db, 'categories', cat.categoryId), sanitizeFirestoreData(cat), { merge: true }).catch(() => null);
-        }
-      }
-
-      // 2. Seed Products
-      for (const prod of INITIAL_PRODUCTS) {
-        if (!this.isTombstoned('product', prod.productId)) {
-          await setDoc(doc(db, 'products', prod.productId), sanitizeFirestoreData(prod), { merge: true }).catch(() => null);
-        }
-      }
-
-      // 3. Seed Course Categories
-      for (const ccat of INITIAL_COURSE_CATEGORIES) {
-        if (!this.isTombstoned('course_category', ccat.id)) {
-          await setDoc(doc(db, 'courseCategories', ccat.id), sanitizeFirestoreData(ccat), { merge: true }).catch(() => null);
-        }
-      }
-
-      // 4. Seed Courses
-      for (const crs of INITIAL_COURSES) {
-        if (!this.isTombstoned('course', crs.courseId)) {
-          await setDoc(doc(db, 'courses', crs.courseId), sanitizeFirestoreData(crs), { merge: true }).catch(() => null);
-        }
-      }
-
-      // 5. Seed Service Categories
-      for (const scat of INITIAL_SERVICE_CATEGORIES) {
-        if (!this.isTombstoned('service_category', scat.id)) {
-          await setDoc(doc(db, 'serviceCategories', scat.id), sanitizeFirestoreData(scat), { merge: true }).catch(() => null);
-        }
-      }
-
-      // 6. Seed Experts
-      for (const exp of INITIAL_EXPERTS) {
-        if (!this.isTombstoned('expert', exp.expertId)) {
-          await setDoc(doc(db, 'experts', exp.expertId), sanitizeFirestoreData(exp), { merge: true }).catch(() => null);
-        }
-      }
-
-      // 7. Write the immutable bootstrap marker
-      await setDoc(doc(db, 'system', 'bootstrap'), {
-        initialized: true,
-        seededAt: new Date().toISOString(),
-        version: 1,
-        authoritativeProject: 'gen-lang-client-0045913772',
-      });
-
-      console.log('[AntiResurrectionService] Canonical database bootstrap completed. Firestore is now the sole single source of truth.');
-    } catch (err) {
-      console.error('[AntiResurrectionService] Error during one-time database bootstrap:', err);
-    } finally {
-      this.isSeeding = false;
     }
   }
 }

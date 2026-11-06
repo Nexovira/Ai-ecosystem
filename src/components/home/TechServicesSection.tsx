@@ -1,14 +1,19 @@
 import React from 'react';
 import { ArrowRight, Code, Smartphone, Layout, Cloud, CheckCircle, Briefcase } from 'lucide-react';
 import { useRouter } from '../../context/RouterContext';
-import { INITIAL_SERVICE_CATEGORIES } from '../../data/servicesCatalog';
+import { useServices } from '../../context/ServicesContext';
 import { Button } from '../common/Button';
 
 export const TechServicesSection: React.FC = () => {
   const { navigate } = useRouter();
+  const { activeCategories, loadingCategories } = useServices();
 
-  // Top 4 core services
-  const coreServices = INITIAL_SERVICE_CATEGORIES.slice(0, 4);
+  // Top 4 core services from authoritative Firestore state
+  const coreServices = activeCategories.slice(0, 4);
+
+  if (!loadingCategories && coreServices.length === 0) {
+    return null; // Clean empty state: do not display if no categories configured
+  }
 
   const serviceIcons: Record<string, React.ComponentType<{ className?: string }>> = {
     'cat-web-development': Code,
