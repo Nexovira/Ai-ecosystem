@@ -2809,6 +2809,92 @@ Respond with a strictly valid JSON object matching this schema:
   });
 
   /**
+   * POST /api/management/users/lookup-by-email
+   * Looks up a registered user by verified email address and returns their verified UID and profile.
+   */
+  app.post(['/api/management/users/lookup-by-email', '/management/users/lookup-by-email'], async (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
+    try {
+      const authResult = requireManagementAuth(req, res, 'USERS_VIEW');
+      if (!authResult) return;
+
+      const { email } = req.body;
+      if (!email || typeof email !== 'string' || !email.includes('@')) {
+        return res.status(400).json({ success: false, error: 'Valid registered user email address is required.' });
+      }
+
+      const userProfile = await managementService.getUserByEmail(email);
+      if (!userProfile) {
+        return res.status(404).json({
+          success: false,
+          error: `No registered account found with email: ${email.trim()}`,
+        });
+      }
+
+      return res.json({
+        success: true,
+        user: {
+          userId: userProfile.userId,
+          email: userProfile.email,
+          fullName: userProfile.fullName,
+          role: userProfile.role,
+          pendingRole: userProfile.pendingRole || null,
+          accountStatus: userProfile.accountStatus,
+          emailVerified: userProfile.emailVerified,
+          createdAt: userProfile.createdAt,
+          updatedAt: userProfile.updatedAt,
+        },
+      });
+    } catch (err: unknown) {
+      console.error('Error in user lookup by email:', err);
+      const msg = err instanceof Error ? err.message : 'User lookup failed';
+      return res.status(500).json({ success: false, error: msg });
+    }
+  });
+
+  /**
+   * POST /api/management/users/correct-role
+   * Server-authoritative role correction tool by verified UID.
+   * Restricts assignment to legitimate ecosystem non-administrative roles: CUSTOMER, AFFILIATE, SELLER, EXPERT.
+   */
+  app.post(['/api/management/users/correct-role', '/management/users/correct-role'], async (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
+    try {
+      const authResult = requireManagementAuth(req, res, 'USERS_MANAGE_ROLE');
+      if (!authResult) return;
+
+      const { targetUserId, newRole, reason } = req.body;
+
+      if (!targetUserId || typeof targetUserId !== 'string') {
+        return res.status(400).json({ success: false, error: 'Verified target user UID is required.' });
+      }
+
+      const allowedRoles = ['CUSTOMER', 'AFFILIATE', 'SELLER', 'EXPERT'];
+      if (!newRole || !allowedRoles.includes(newRole)) {
+        return res.status(400).json({
+          success: false,
+          error: `Invalid role specified. Supported roles for correction are: ${allowedRoles.join(', ')}. Administrator roles cannot be granted through this tool.`,
+        });
+      }
+
+      const result = await managementService.correctUserRole({
+        targetUserId,
+        newRole,
+        reason: reason || 'Administrator role correction via email tool',
+        actorId: authResult.userId,
+        actorEmail: authResult.userEmail,
+        actorRole: authResult.userRole,
+      });
+
+      return res.json(result);
+    } catch (err: unknown) {
+      console.error('Error in correctUserRole:', err);
+      const msg = err instanceof Error ? err.message : 'Role correction failed';
+      return res.status(400).json({ success: false, error: msg });
+    }
+  });
+
+  /**
    * GET /api/management/sellers
    * Real seller profiles and applications.
    */

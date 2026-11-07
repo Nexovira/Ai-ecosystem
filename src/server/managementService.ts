@@ -568,6 +568,117 @@ export class ManagementService {
   }
 
   /**
+   * Look up user profile by verified email.
+   */
+  async getUserByEmail(email: string): Promise<UserProfile | null> {
+    if (!email || !email.trim()) return null;
+    const cleanEmail = email.trim().toLowerCase();
+
+    // Query Firestore users collection for matching email
+    const usersRef = collection(db, 'users');
+    const q = query(usersRef, where('email', '==', cleanEmail));
+    const snap = await getDocs(q);
+
+    if (!snap.empty) {
+      const docSnap = snap.docs[0];
+      const data = docSnap.data() as UserProfile;
+      return {
+        ...data,
+        userId: docSnap.id,
+      };
+    }
+
+    return null;
+  }
+
+  /**
+   * Secure administrator user role correction tool by verified UID.
+   * Only allows assigning approved non-administrator ecosystem roles:
+   * CUSTOMER, AFFILIATE, SELLER, EXPERT.
+   */
+  async correctUserRole(params: {
+    targetUserId: string;
+    newRole: 'CUSTOMER' | 'AFFILIATE' | 'SELLER' | 'EXPERT';
+    reason: string;
+    actorId: string;
+    actorEmail: string;
+    actorRole: ManagementRole | string;
+  }): Promise<{ success: boolean; user?: UserProfile; previousRole?: UserRole; error?: string }> {
+    if (!hasManagementPermission(params.actorRole as ManagementRole, 'USERS_MANAGE_ROLE')) {
+      throw new Error('Forbidden: Only authorized administrators can correct user roles.');
+    }
+
+    // Protection: User cannot change their own role
+    if (params.actorId === params.targetUserId) {
+      throw new Error('Forbidden: Self-role modification is strictly prohibited.');
+    }
+
+    // Protection: Explicitly forbid assigning administrator roles through this ordinary role tool
+    const allowedRoles = ['CUSTOMER', 'AFFILIATE', 'SELLER', 'EXPERT'];
+    if (!allowedRoles.includes(params.newRole)) {
+      throw new Error(`Forbidden: Role "${params.newRole}" is not permitted for standard role correction. Only CUSTOMER, AFFILIATE, SELLER, and EXPERT are permitted.`);
+    }
+
+    const userDocRef = doc(db, 'users', params.targetUserId);
+    const snap = await getDoc(userDocRef);
+    if (!snap.exists()) {
+      return { success: false, error: 'Target user record not found in authoritative Firestore database.' };
+    }
+
+    const existing = snap.data() as UserProfile;
+    const previousRole = existing.role;
+
+    // Protection: Prevent demoting existing SUPER_ADMIN or ADMIN accounts through ordinary role correction tool
+    if (['SUPER_ADMIN', 'ADMIN'].includes(previousRole) && params.actorRole !== 'SUPER_ADMIN') {
+      throw new Error('Forbidden: Cannot modify an administrative account without SUPER_ADMIN authorization.');
+    }
+
+    const now = new Date().toISOString();
+    const updated: UserProfile = {
+      ...existing,
+      role: params.newRole,
+      pendingRole: null,
+      updatedAt: now,
+    };
+
+    // Update user document
+    await updateDoc(userDocRef, {
+      role: params.newRole,
+      pendingRole: null,
+      updatedAt: now,
+    });
+
+    // Remove from admins registry if previous role was administrative
+    const adminDocRef = doc(db, 'admins', params.targetUserId);
+    try {
+      await deleteDoc(adminDocRef);
+    } catch {
+      // Ignore if not in admins collection
+    }
+
+    // Record authoritative audit log with full metadata
+    await this.recordAuditLog({
+      actorId: params.actorId,
+      actorEmail: params.actorEmail,
+      actorRole: params.actorRole,
+      action: 'ADMIN_ROLE_CORRECTION_BY_EMAIL',
+      targetType: 'USER',
+      targetId: params.targetUserId,
+      previousState: { role: previousRole, email: existing.email },
+      newState: { role: params.newRole },
+      reason: params.reason || 'Administrator email-based role correction',
+      metadata: {
+        targetUserEmail: existing.email,
+        targetUserId: params.targetUserId,
+        executedVia: 'ROLE_CORRECTION_TOOL',
+        timestamp: now,
+      },
+    });
+
+    return { success: true, user: updated, previousRole };
+  }
+
+  /**
    * Retrieves management team members list.
    */
   async getTeamMembers(): Promise<UserProfile[]> {

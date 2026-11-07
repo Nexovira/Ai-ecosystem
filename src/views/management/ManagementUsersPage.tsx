@@ -32,7 +32,7 @@ import { safeApiFetch } from '../../lib/apiClient';
 
 export const ManagementUsersPage: React.FC = () => {
   const { user, profile } = useAuth();
-  const [activeTab, setActiveTab] = useState<'USERS' | 'APPLICATIONS'>('USERS');
+  const [activeTab, setActiveTab] = useState<'USERS' | 'APPLICATIONS' | 'ROLE_CORRECTION'>('USERS');
   const [users, setUsers] = useState<ManagementUserItem[]>([]);
   const [roleApplications, setRoleApplications] = useState<RoleApplication[]>([]);
   const [loadingApplications, setLoadingApplications] = useState(false);
@@ -74,7 +74,133 @@ export const ManagementUsersPage: React.FC = () => {
   const [reviewNotes, setReviewNotes] = useState('');
   const [submittingReview, setSubmittingReview] = useState(false);
 
+  // Email-Based Role Correction Tool State
+  const [lookupEmail, setLookupEmail] = useState('');
+  const [lookingUpUser, setLookingUpUser] = useState(false);
+  const [lookupResult, setLookupResult] = useState<ManagementUserItem | null>(null);
+  const [correctionRole, setCorrectionRole] = useState<'CUSTOMER' | 'AFFILIATE' | 'SELLER' | 'EXPERT'>('CUSTOMER');
+  const [correctionReason, setCorrectionReason] = useState('');
+  const [submittingCorrection, setSubmittingCorrection] = useState(false);
+  const [correctionConfirmed, setCorrectionConfirmed] = useState(false);
+
   const [actionFeedback, setActionFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const handleLookupUserByEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!lookupEmail.trim() || !user) return;
+    setLookingUpUser(true);
+    setLookupResult(null);
+    setActionFeedback(null);
+    setCorrectionConfirmed(false);
+
+    const isDefaultAdmin =
+      user.email?.toLowerCase() === 'nexoviratech@gmail.com' ||
+      user.email?.toLowerCase() === 'nexovirasupport@gmail.com';
+    const effectiveRole = profile?.role || (isDefaultAdmin ? 'SUPER_ADMIN' : 'ADMIN');
+
+    try {
+      const res = await safeApiFetch<{ success: boolean; user?: ManagementUserItem; error?: string }>(
+        '/api/management/users/lookup-by-email',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-id': user.uid,
+            'x-user-role': effectiveRole,
+            'x-user-email': user.email || '',
+          },
+          body: JSON.stringify({ email: lookupEmail.trim() }),
+        }
+      );
+
+      if (res.data?.success && res.data.user) {
+        setLookupResult(res.data.user);
+        // Default target role to current role if within allowed non-admin roles
+        const curr = res.data.user.role;
+        if (['CUSTOMER', 'AFFILIATE', 'SELLER', 'EXPERT'].includes(curr)) {
+          setCorrectionRole(curr as 'CUSTOMER' | 'AFFILIATE' | 'SELLER' | 'EXPERT');
+        } else {
+          setCorrectionRole('CUSTOMER');
+        }
+        setActionFeedback({
+          type: 'success',
+          text: `Verified user found for ${res.data.user.email} (UID: ${res.data.user.userId}). Select role and confirm.`,
+        });
+      } else {
+        setActionFeedback({
+          type: 'error',
+          text: res.data?.error || res.error || 'User not found with the specified email address.',
+        });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Lookup failed';
+      setActionFeedback({ type: 'error', text: msg });
+    } finally {
+      setLookingUpUser(false);
+    }
+  };
+
+  const handleExecuteRoleCorrection = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!lookupResult || !user) return;
+    if (!correctionReason.trim()) {
+      setActionFeedback({ type: 'error', text: 'Operational audit reason is required for role correction.' });
+      return;
+    }
+    if (!correctionConfirmed) {
+      setActionFeedback({ type: 'error', text: 'Please check the confirmation box to authorize this role correction.' });
+      return;
+    }
+
+    setSubmittingCorrection(true);
+    setActionFeedback(null);
+
+    const isDefaultAdmin =
+      user.email?.toLowerCase() === 'nexoviratech@gmail.com' ||
+      user.email?.toLowerCase() === 'nexovirasupport@gmail.com';
+    const effectiveRole = profile?.role || (isDefaultAdmin ? 'SUPER_ADMIN' : 'ADMIN');
+
+    try {
+      const res = await safeApiFetch<{ success: boolean; user?: ManagementUserItem; previousRole?: string; error?: string }>(
+        '/api/management/users/correct-role',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-id': user.uid,
+            'x-user-role': effectiveRole,
+            'x-user-email': user.email || '',
+          },
+          body: JSON.stringify({
+            targetUserId: lookupResult.userId,
+            newRole: correctionRole,
+            reason: correctionReason.trim(),
+          }),
+        }
+      );
+
+      if (res.data?.success && res.data.user) {
+        setActionFeedback({
+          type: 'success',
+          text: `Role successfully corrected for ${lookupResult.email} to ${correctionRole}. Verified in database.`,
+        });
+        setLookupResult(res.data.user);
+        setCorrectionReason('');
+        setCorrectionConfirmed(false);
+        fetchUsers();
+      } else {
+        setActionFeedback({
+          type: 'error',
+          text: res.data?.error || res.error || 'Role correction was rejected by the server.',
+        });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Correction execution error';
+      setActionFeedback({ type: 'error', text: msg });
+    } finally {
+      setSubmittingCorrection(false);
+    }
+  };
 
   const fetchUsers = async () => {
     if (!user || !profile) return;
@@ -754,6 +880,18 @@ export const ManagementUsersPage: React.FC = () => {
               {roleApplications.filter((a) => a.status === 'PENDING_REVIEW').length} PENDING
             </span>
           )}
+        </button>
+
+        <button
+          onClick={() => setActiveTab('ROLE_CORRECTION')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+            activeTab === 'ROLE_CORRECTION'
+              ? 'bg-[#0682F4] text-white shadow-lg shadow-[#0682F4]/20'
+              : 'bg-[#011B33] text-[#CCD2D9] hover:text-white border border-[#0682F4]/30'
+          }`}
+        >
+          <UserCheck className="w-4 h-4" />
+          Role Correction Tool
         </button>
       </div>
 

@@ -55,10 +55,10 @@ service cloud.firestore {
         data.email is string && data.email.size() <= 150 &&
         data.role is string && data.role in ['CUSTOMER', 'AFFILIATE', 'EXPERT', 'STAFF', 'ADMIN', 'SUPER_ADMIN'] &&
         data.accountStatus is string && data.accountStatus in ['ACTIVE', 'RESTRICTED', 'SUSPENDED', 'UNDER_REVIEW', 'DISABLED'] &&
-        (!('pendingRole' in data) || data.pendingRole in ['CUSTOMER', 'AFFILIATE', 'EXPERT']) &&
-        (!('roleApplicationId' in data) || (data.roleApplicationId is string && data.roleApplicationId.size() <= 128)) &&
-        (!('phoneNumber' in data) || (data.phoneNumber is string && data.phoneNumber.size() <= 25)) &&
-        (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 500)) &&
+        (!('pendingRole' in data) || data.pendingRole == null || data.pendingRole in ['CUSTOMER', 'AFFILIATE', 'EXPERT']) &&
+        (!('roleApplicationId' in data) || data.roleApplicationId == null || (data.roleApplicationId is string && data.roleApplicationId.size() <= 128)) &&
+        (!('phoneNumber' in data) || data.phoneNumber == null || (data.phoneNumber is string && data.phoneNumber.size() <= 25)) &&
+        (!('photoURL' in data) || data.photoURL == null || (data.photoURL is string && data.photoURL.size() <= 500)) &&
         (!('emailVerified' in data) || data.emailVerified is bool);
     }
 
