@@ -592,7 +592,7 @@ service cloud.firestore {
         resource.data.actorId == request.auth.uid ||
         isAdmin()
       );
-      allow list: if !isSignedIn() || isAdmin();
+      allow list: if !isSignedIn() || isAdmin() || (isSignedIn() && resource.data.actorId == request.auth.uid);
       allow write: if isValidId(entryId) && (
         !isSignedIn() || isAdmin()
       );

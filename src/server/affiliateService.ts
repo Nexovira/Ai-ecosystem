@@ -312,8 +312,17 @@ class AffiliateService {
       if (db) {
         try {
           await setDoc(doc(db, 'affiliateProfiles', affId), profile);
-          // Also mark user record in Firestore as having affiliate capability
-          await setDoc(doc(db, 'users', application.userId), { updatedAt: new Date().toISOString() }, { merge: true }).catch(() => null);
+          // Also mark user record in Firestore as having affiliate role and capability
+          await setDoc(
+            doc(db, 'users', application.userId),
+            {
+              role: 'AFFILIATE',
+              pendingRole: null,
+              roleApplicationId: application.applicationId,
+              updatedAt: new Date().toISOString(),
+            },
+            { merge: true }
+          ).catch(() => null);
         } catch (err) {
           console.warn('Firestore affiliateProfiles write notice:', err);
         }

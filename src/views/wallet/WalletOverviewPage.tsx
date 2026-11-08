@@ -7,6 +7,7 @@ import {
   Wallet,
   LedgerEntry,
   WalletPayoutRequest,
+  WalletType,
 } from '../../types/wallet';
 import {
   ArrowDownLeft,
@@ -21,6 +22,9 @@ import {
   AlertCircle,
   Lock,
 } from 'lucide-react';
+import { safeApiFetch } from '../../lib/apiClient';
+import { db } from '../../lib/firebase';
+import { collection, query, where, getDocs, limit, orderBy } from 'firebase/firestore';
 
 export const WalletOverviewPage: React.FC = () => {
   const { navigate } = useRouter();
@@ -55,31 +59,99 @@ export const WalletOverviewPage: React.FC = () => {
       setIsLoading(true);
       setError(null);
 
-      const res = await fetch(`/api/wallet/summary?userId=${encodeURIComponent(user.uid)}`, {
-        headers: getHeaders(),
-      });
+      // Layer 1: Authoritative API Endpoint with safeApiFetch
+      const res = await safeApiFetch<{ summary: { wallets: Wallet[]; recentTransactions: LedgerEntry[]; recentPayouts: WalletPayoutRequest[] } }>(
+        `/api/wallet/summary?userId=${encodeURIComponent(user.uid)}`,
+        { headers: getHeaders() }
+      );
 
-      if (!res.ok) {
-        throw new Error('Failed to retrieve financial wallet summary.');
-      }
-
-      const data = await res.json();
-      if (data.summary) {
-        const loadedWallets = data.summary.wallets || [];
+      if (res.success && res.summary) {
+        const loadedWallets = res.summary.wallets || [];
         setWallets(loadedWallets);
         if (loadedWallets.length > 0) {
           setSelectedWallet(loadedWallets[0]);
         }
-        setRecentEntries(data.summary.recentTransactions || []);
-        setRecentPayouts(data.summary.recentPayouts || []);
+        setRecentEntries(res.summary.recentTransactions || []);
+        setRecentPayouts(res.summary.recentPayouts || []);
+        return;
       }
+
+      // Layer 2: Dual-Layer Direct Firestore Fallback
+      if (db) {
+        try {
+          const wSnap = await getDocs(query(collection(db, 'wallets'), where('ownerId', '==', user.uid)));
+          let directWallets: Wallet[] = [];
+          wSnap.forEach((docSnap) => {
+            directWallets.push(docSnap.data() as Wallet);
+          });
+
+          if (directWallets.length === 0) {
+            // Safe initial default wallet representation
+            const initialWallet: Wallet = {
+              id: `w_${user.uid}_ngn`,
+              walletId: `w_${user.uid}_ngn`,
+              ownerId: user.uid,
+              ownerRole: profile?.role || 'CUSTOMER',
+              walletType: (profile?.role === 'AFFILIATE' ? 'AFFILIATE_EARNINGS' : 'MAIN_BALANCE') as WalletType,
+              currency: 'NGN',
+              availableBalance: 0,
+              pendingBalance: 0,
+              heldBalance: 0,
+              lifetimeCredited: 0,
+              lifetimeDebited: 0,
+              status: 'ACTIVE',
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            };
+            directWallets = [initialWallet];
+          }
+
+          setWallets(directWallets);
+          setSelectedWallet(directWallets[0]);
+
+          // Fetch recent ledger entries
+          try {
+            const lSnap = await getDocs(
+              query(collection(db, 'walletLedger'), where('actorId', '==', user.uid), limit(10))
+            );
+            const loadedEntries: LedgerEntry[] = [];
+            lSnap.forEach((docSnap) => {
+              loadedEntries.push(docSnap.data() as LedgerEntry);
+            });
+            loadedEntries.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+            setRecentEntries(loadedEntries);
+          } catch {
+            setRecentEntries([]);
+          }
+
+          // Fetch recent payouts
+          try {
+            const pSnap = await getDocs(
+              query(collection(db, 'walletPayouts'), where('beneficiaryUserId', '==', user.uid), limit(10))
+            );
+            const loadedPayouts: WalletPayoutRequest[] = [];
+            pSnap.forEach((docSnap) => {
+              loadedPayouts.push(docSnap.data() as WalletPayoutRequest);
+            });
+            loadedPayouts.sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime());
+            setRecentPayouts(loadedPayouts);
+          } catch {
+            setRecentPayouts([]);
+          }
+          return;
+        } catch (dbErr) {
+          console.warn('Direct Firestore wallet retrieval fallback warning:', dbErr);
+        }
+      }
+
+      throw new Error(res.error || 'Failed to retrieve financial wallet summary.');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error loading wallet.';
       setError(msg);
     } finally {
       setIsLoading(false);
     }
-  }, [user, getHeaders]);
+  }, [user, profile, getHeaders]);
 
   useEffect(() => {
     loadWalletData();

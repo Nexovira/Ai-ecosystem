@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { WalletLayout } from './WalletLayout';
-import { Wallet, LedgerEntry } from '../../types/wallet';
+import { Wallet, LedgerEntry, WalletType } from '../../types/wallet';
 import {
   Search,
   Filter,
@@ -16,6 +16,9 @@ import {
   ShieldCheck,
   CheckCircle2,
 } from 'lucide-react';
+import { safeApiFetch } from '../../lib/apiClient';
+import { db } from '../../lib/firebase';
+import { collection, query, where, getDocs, limit as firestoreLimit } from 'firebase/firestore';
 
 export const WalletTransactionsPage: React.FC = () => {
   const { user, profile } = useAuth();
@@ -49,24 +52,53 @@ export const WalletTransactionsPage: React.FC = () => {
   const loadWallets = useCallback(async () => {
     if (!user) return;
     try {
-      const res = await fetch(`/api/wallets?userId=${encodeURIComponent(user.uid)}`, {
-        headers: getHeaders(),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const loadedWallets = data.wallets || [];
-        setWallets(loadedWallets);
-        if (loadedWallets.length > 0 && !selectedWallet) {
-          setSelectedWallet(loadedWallets[0]);
+      const res = await safeApiFetch<{ wallets: Wallet[] }>(
+        `/api/wallets?userId=${encodeURIComponent(user.uid)}`,
+        { headers: getHeaders() }
+      );
+      if (res.success && res.wallets && res.wallets.length > 0) {
+        setWallets(res.wallets);
+        if (!selectedWallet) {
+          setSelectedWallet(res.wallets[0]);
+        }
+        return;
+      }
+
+      // Firestore direct fallback
+      if (db) {
+        const wSnap = await getDocs(query(collection(db, 'wallets'), where('ownerId', '==', user.uid)));
+        const loaded: Wallet[] = [];
+        wSnap.forEach((d) => loaded.push(d.data() as Wallet));
+        if (loaded.length === 0) {
+          loaded.push({
+            id: `w_${user.uid}_ngn`,
+            walletId: `w_${user.uid}_ngn`,
+            ownerId: user.uid,
+            ownerRole: profile?.role || 'CUSTOMER',
+            walletType: (profile?.role === 'AFFILIATE' ? 'AFFILIATE_EARNINGS' : 'MAIN_BALANCE') as WalletType,
+            currency: 'NGN',
+            availableBalance: 0,
+            pendingBalance: 0,
+            heldBalance: 0,
+            lifetimeCredited: 0,
+            lifetimeDebited: 0,
+            status: 'ACTIVE',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+        }
+        setWallets(loaded);
+        if (!selectedWallet) {
+          setSelectedWallet(loaded[0]);
         }
       }
     } catch {
       // Ignored
     }
-  }, [user, getHeaders, selectedWallet]);
+  }, [user, profile, getHeaders, selectedWallet]);
 
   const loadTransactions = useCallback(async () => {
-    if (!selectedWallet) return;
+    if (!selectedWallet || !user) return;
     setIsLoading(true);
     try {
       const params = new URLSearchParams();
@@ -77,14 +109,13 @@ export const WalletTransactionsPage: React.FC = () => {
       params.append('limit', pageSize.toString());
       params.append('offset', ((page - 1) * pageSize).toString());
 
-      const res = await fetch(
+      const res = await safeApiFetch<{ entries: LedgerEntry[]; total: number }>(
         `/api/wallets/${encodeURIComponent(selectedWallet.walletId)}/ledger?${params.toString()}`,
         { headers: getHeaders() }
       );
 
-      if (res.ok) {
-        const data = await res.json();
-        let list: LedgerEntry[] = data.entries || [];
+      if (res.success && res.entries) {
+        let list: LedgerEntry[] = res.entries || [];
 
         // Client-side search filter for description / transaction ID
         if (search.trim()) {
@@ -98,14 +129,49 @@ export const WalletTransactionsPage: React.FC = () => {
         }
 
         setEntries(list);
-        setTotal(data.total || 0);
+        setTotal(res.total || list.length);
+        return;
+      }
+
+      // Firestore direct fallback
+      if (db) {
+        try {
+          const snap = await getDocs(
+            query(collection(db, 'walletLedger'), where('actorId', '==', user.uid), firestoreLimit(50))
+          );
+          let list: LedgerEntry[] = [];
+          snap.forEach((d) => list.push(d.data() as LedgerEntry));
+          list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+          if (entryType !== 'ALL') {
+            list = list.filter((e) => e.entryType === entryType);
+          }
+          if (sourceType !== 'ALL') {
+            list = list.filter((e) => e.sourceType === sourceType);
+          }
+          if (search.trim()) {
+            const q = search.toLowerCase();
+            list = list.filter(
+              (e) =>
+                e.transactionId.toLowerCase().includes(q) ||
+                e.description.toLowerCase().includes(q) ||
+                e.sourceReferenceId.toLowerCase().includes(q)
+            );
+          }
+
+          setEntries(list.slice((page - 1) * pageSize, page * pageSize));
+          setTotal(list.length);
+        } catch {
+          setEntries([]);
+          setTotal(0);
+        }
       }
     } catch {
       // Error
     } finally {
       setIsLoading(false);
     }
-  }, [selectedWallet, entryType, sourceType, startDate, endDate, page, search, getHeaders]);
+  }, [selectedWallet, user, entryType, sourceType, startDate, endDate, page, search, getHeaders]);
 
   useEffect(() => {
     loadWallets();

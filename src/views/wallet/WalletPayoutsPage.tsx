@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { WalletLayout } from './WalletLayout';
 import { RequestPayoutModal } from './RequestPayoutModal';
-import { Wallet, WalletPayoutRequest } from '../../types/wallet';
+import { Wallet, WalletPayoutRequest, WalletType } from '../../types/wallet';
 import {
   Building,
   RefreshCw,
@@ -13,6 +13,9 @@ import {
   Clock,
   ExternalLink,
 } from 'lucide-react';
+import { safeApiFetch } from '../../lib/apiClient';
+import { db } from '../../lib/firebase';
+import { collection, query, where, getDocs, limit as firestoreLimit } from 'firebase/firestore';
 
 export const WalletPayoutsPage: React.FC = () => {
   const { user, profile } = useAuth();
@@ -37,44 +40,92 @@ export const WalletPayoutsPage: React.FC = () => {
   const loadWallets = useCallback(async () => {
     if (!user) return;
     try {
-      const res = await fetch(`/api/wallets?userId=${encodeURIComponent(user.uid)}`, {
-        headers: getHeaders(),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const list = data.wallets || [];
+      const res = await safeApiFetch<{ wallets: Wallet[] }>(
+        `/api/wallets?userId=${encodeURIComponent(user.uid)}`,
+        { headers: getHeaders() }
+      );
+      if (res.success && res.wallets && res.wallets.length > 0) {
+        setWallets(res.wallets);
+        if (!selectedWallet) {
+          setSelectedWallet(res.wallets[0]);
+        }
+        return;
+      }
+
+      // Firestore direct fallback
+      if (db) {
+        const wSnap = await getDocs(query(collection(db, 'wallets'), where('ownerId', '==', user.uid)));
+        const list: Wallet[] = [];
+        wSnap.forEach((d) => list.push(d.data() as Wallet));
+        if (list.length === 0) {
+          list.push({
+            id: `w_${user.uid}_ngn`,
+            walletId: `w_${user.uid}_ngn`,
+            ownerId: user.uid,
+            ownerRole: profile?.role || 'CUSTOMER',
+            walletType: (profile?.role === 'AFFILIATE' ? 'AFFILIATE_EARNINGS' : 'MAIN_BALANCE') as WalletType,
+            currency: 'NGN',
+            availableBalance: 0,
+            pendingBalance: 0,
+            heldBalance: 0,
+            lifetimeCredited: 0,
+            lifetimeDebited: 0,
+            status: 'ACTIVE',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+        }
         setWallets(list);
-        if (list.length > 0 && !selectedWallet) {
+        if (!selectedWallet) {
           setSelectedWallet(list[0]);
         }
       }
     } catch {
       // Ignored
     }
-  }, [user, getHeaders, selectedWallet]);
+  }, [user, profile, getHeaders, selectedWallet]);
 
   const loadPayouts = useCallback(async () => {
-    if (!selectedWallet) return;
+    if (!selectedWallet || !user) return;
     setIsLoading(true);
     try {
       const params = new URLSearchParams();
       if (statusFilter !== 'ALL') params.append('status', statusFilter);
 
-      const res = await fetch(
+      const res = await safeApiFetch<{ payouts: WalletPayoutRequest[] }>(
         `/api/wallets/${encodeURIComponent(selectedWallet.walletId)}/payouts?${params.toString()}`,
         { headers: getHeaders() }
       );
 
-      if (res.ok) {
-        const data = await res.json();
-        setPayouts(data.payouts || []);
+      if (res.success && res.payouts) {
+        setPayouts(res.payouts || []);
+        return;
+      }
+
+      // Firestore direct fallback
+      if (db) {
+        try {
+          const snap = await getDocs(
+            query(collection(db, 'walletPayouts'), where('beneficiaryUserId', '==', user.uid), firestoreLimit(50))
+          );
+          let list: WalletPayoutRequest[] = [];
+          snap.forEach((d) => list.push(d.data() as WalletPayoutRequest));
+          list.sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime());
+
+          if (statusFilter !== 'ALL') {
+            list = list.filter((p) => p.status === statusFilter);
+          }
+          setPayouts(list);
+        } catch {
+          setPayouts([]);
+        }
       }
     } catch {
       // Ignored
     } finally {
       setIsLoading(false);
     }
-  }, [selectedWallet, statusFilter, getHeaders]);
+  }, [selectedWallet, user, statusFilter, getHeaders]);
 
   useEffect(() => {
     loadWallets();
