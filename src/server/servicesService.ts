@@ -324,6 +324,14 @@ class ServicesService {
       this.categoriesCache.push(updatedCategory);
     }
 
+    // Persist to authoritative Firestore collection
+    if (db) {
+      setDoc(doc(db, 'serviceCategories', id), sanitizeFirestoreData(updatedCategory), { merge: true }).catch((err) => {
+        console.warn('Firestore serviceCategory write notice:', err);
+      });
+      antiResurrectionService.removeTombstone('service_category', id).catch(() => null);
+    }
+
     this.recordAuditLog(
       'MANAGEMENT',
       'nexoviratech@gmail.com',
@@ -764,6 +772,7 @@ class ServicesService {
       setDoc(doc(db, 'experts', expertId), sanitizeFirestoreData(newExpert), { merge: true }).catch((err) => {
         console.warn('Firestore expert creation write notice:', err);
       });
+      antiResurrectionService.removeTombstone('expert', expertId).catch(() => null);
     }
 
     this.recordAuditLog(

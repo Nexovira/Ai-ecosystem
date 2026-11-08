@@ -1439,7 +1439,7 @@ Respond with a strictly valid JSON object matching this schema:
     try {
       const { affiliateCode, destinationSlug } = req.params;
       const offerId = req.query.offer as string | undefined;
-      const ip = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '';
+      const ip = (req.headers['x-forwarded-for'] as string) || req.socket?.remoteAddress || '';
       const userAgent = req.headers['user-agent'] || '';
 
       const trackResult = await affiliateService.trackReferralClick({
@@ -1478,7 +1478,7 @@ Respond with a strictly valid JSON object matching this schema:
         return res.status(400).json({ success: false, error: 'Affiliate code is required.' });
       }
 
-      const ip = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '';
+      const ip = (req.headers['x-forwarded-for'] as string) || req.socket?.remoteAddress || '';
       const userAgent = req.headers['user-agent'] || '';
 
       const result = await affiliateService.trackReferralClick({
@@ -1719,7 +1719,7 @@ Respond with a strictly valid JSON object matching this schema:
       const clientIdentifier =
         (req.headers['x-user-id'] as string) ||
         (req.headers['x-forwarded-for'] as string)?.split(',')[0].trim() ||
-        req.socket.remoteAddress ||
+        req.socket?.remoteAddress ||
         accountNumber;
 
       const result = await affiliateService.verifyBankAccount({
@@ -2324,7 +2324,7 @@ Respond with a strictly valid JSON object matching this schema:
   app.get(['/api/search', '/search'], async (req: Request, res: Response) => {
     res.setHeader('Content-Type', 'application/json');
     try {
-      const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
+      const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket?.remoteAddress || '127.0.0.1';
       if (!checkSearchRateLimit(clientIp)) {
         return res.status(429).json({ success: false, error: 'Too many search requests. Please slow down.' });
       }
@@ -2365,7 +2365,7 @@ Respond with a strictly valid JSON object matching this schema:
   app.get(['/api/search/suggestions', '/search/suggestions'], async (req: Request, res: Response) => {
     res.setHeader('Content-Type', 'application/json');
     try {
-      const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
+      const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket?.remoteAddress || '127.0.0.1';
       if (!checkSearchRateLimit(clientIp)) {
         return res.status(429).json({ success: false, error: 'Rate limit exceeded' });
       }
@@ -2437,7 +2437,7 @@ Respond with a strictly valid JSON object matching this schema:
    */
   app.post('/api/auth/bootstrap-first-admin', async (req: Request, res: Response) => {
     try {
-      const clientIp = req.ip || req.socket.remoteAddress || 'unknown-client';
+      const clientIp = req.ip || req.socket?.remoteAddress || 'unknown-client';
       const now = Date.now();
       const windowMs = 15 * 60 * 1000; // 15 minutes
 
@@ -4164,7 +4164,7 @@ Respond with a strictly valid JSON object matching this schema:
     try {
       const { token } = req.params;
       const userAgent = req.headers['user-agent'];
-      const ipAddress = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress;
+      const ipAddress = (req.headers['x-forwarded-for'] as string) || req.socket?.remoteAddress;
 
       const deliverable = await digitalProductService.processAuthorizedDownload(token, {
         userAgent,

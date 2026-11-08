@@ -139,6 +139,61 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
           }
         });
       }
+
+      // Also hydrate active digital products/ebooks into catalog
+      try {
+        const digSnap = await getDocs(collection(db, 'digitalProducts')).catch(() => null);
+        if (digSnap && !digSnap.empty) {
+          digSnap.forEach((d) => {
+            const dp = d.data();
+            if (dp.status === 'PUBLISHED' && dp.visibility === 'PUBLIC' && !tombstoneIds.has(dp.productId)) {
+              // Only add if not already in loadedProducts
+              if (!loadedProducts.some((p) => p.productId === dp.productId)) {
+                loadedProducts.push({
+                  productId: dp.productId,
+                  sellerId: dp.creatorId || 'nexovira-publishing',
+                  name: dp.title,
+                  slug: dp.slug,
+                  shortDescription: dp.shortDescription || '',
+                  fullDescription: dp.description || '',
+                  category: dp.categorySlug || dp.category || 'digital-products',
+                  brand: 'Nexovira Publishing',
+                  sku: `DP-${dp.productId}`,
+                  price: dp.price || 0,
+                  currency: dp.currency || 'NGN',
+                  stockQuantity: 9999,
+                  availabilityStatus: 'IN_STOCK',
+                  productStatus: 'PUBLISHED',
+                  isApproved: true,
+                  isDigital: true,
+                  publuuUrl: dp.publuuUrl || dp.externalReadingUrl,
+                  externalReadingUrl: dp.externalReadingUrl || dp.publuuUrl,
+                  productImages: [
+                    {
+                      id: `${dp.productId}-cover`,
+                      url: dp.coverImage || '',
+                      alt: dp.title,
+                      isPrimary: true,
+                      order: 0,
+                    },
+                  ],
+                  specifications: [
+                    { label: 'Format', value: 'Digital E-book / Flipbook' },
+                    { label: 'Delivery', value: 'Instant Access & Reading' },
+                  ],
+                  rating: dp.rating || 5,
+                  reviewCount: dp.reviewCount || 0,
+                  createdAt: typeof dp.createdAt === 'string' ? dp.createdAt : new Date().toISOString(),
+                  updatedAt: typeof dp.updatedAt === 'string' ? dp.updatedAt : new Date().toISOString(),
+                });
+              }
+            }
+          });
+        }
+      } catch (digErr) {
+        console.warn('Digital products sync notice:', digErr);
+      }
+
       setProducts(loadedProducts);
 
       // 3. Categories from Firestore authoritative source

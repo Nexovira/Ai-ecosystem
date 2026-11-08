@@ -1182,6 +1182,182 @@ export const ManagementUsersPage: React.FC = () => {
         </div>
       )}
 
+      {/* Role Correction Tool Tab View */}
+      {activeTab === 'ROLE_CORRECTION' && (
+        <div className="space-y-6">
+          {/* Card Container */}
+          <div className="p-6 rounded-2xl bg-[#011B33] border border-[#0682F4]/30 shadow-xl space-y-6">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <UserCheck className="w-5 h-5 text-[#08E6F9]" />
+                <h3 className="text-base font-bold text-white">Administrator Role Correction by Email</h3>
+              </div>
+              <p className="text-xs text-[#CCD2D9]/70">
+                Directly correct a registered member&apos;s role using their verified email address and Firebase UID.
+                Updates Firestore authoritatively and syncs custom claims without permission errors.
+              </p>
+            </div>
+
+            {/* Email Lookup Form */}
+            <form onSubmit={handleLookupUserByEmail} className="flex flex-col sm:flex-row gap-3">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#CCD2D9]/60" />
+                <input
+                  type="email"
+                  required
+                  placeholder="Enter registered user email address (e.g. member@gmail.com)..."
+                  value={lookupEmail}
+                  onChange={(e) => setLookupEmail(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-[#01213D] border border-[#0682F4]/30 text-white text-xs placeholder-[#CCD2D9]/40 focus:outline-none focus:border-[#08E6F9]"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={lookingUpUser || !lookupEmail.trim()}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#0682F4] hover:bg-[#05A9F7] text-white transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 shrink-0"
+              >
+                {lookingUpUser ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    Looking up...
+                  </>
+                ) : (
+                  <>
+                    <Search className="w-3.5 h-3.5" />
+                    Lookup Account
+                  </>
+                )}
+              </button>
+            </form>
+
+            {/* Action Feedback Notification */}
+            {actionFeedback && (
+              <div
+                className={`p-3.5 rounded-xl text-xs flex items-center gap-2.5 ${
+                  actionFeedback.type === 'success'
+                    ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400'
+                    : 'bg-red-500/10 border border-red-500/30 text-red-400'
+                }`}
+              >
+                {actionFeedback.type === 'success' ? (
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                )}
+                <span>{actionFeedback.text}</span>
+              </div>
+            )}
+
+            {/* Account Details and Role Selection (Rendered when user is found) */}
+            {lookupResult && (
+              <div className="p-5 rounded-xl bg-[#01213D] border border-[#0682F4]/40 space-y-5">
+                <div className="flex items-center justify-between pb-3 border-b border-[#0682F4]/20">
+                  <span className="text-xs font-bold text-white uppercase tracking-wider">
+                    Verified Account Details
+                  </span>
+                  <span className="text-[10px] font-mono bg-[#0682F4]/20 text-[#08E6F9] px-2 py-0.5 rounded border border-[#0682F4]/40">
+                    UID: {lookupResult.userId}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                  <div>
+                    <span className="text-[#CCD2D9]/60 block text-[11px] mb-0.5">Full Name</span>
+                    <span className="font-bold text-white">{lookupResult.fullName || 'Member'}</span>
+                  </div>
+                  <div>
+                    <span className="text-[#CCD2D9]/60 block text-[11px] mb-0.5">Email Address</span>
+                    <span className="font-mono text-white truncate block">{lookupResult.email}</span>
+                  </div>
+                  <div>
+                    <span className="text-[#CCD2D9]/60 block text-[11px] mb-0.5">Current Role</span>
+                    <span className="font-bold font-mono text-amber-300 px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 inline-block">
+                      {lookupResult.role}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[#CCD2D9]/60 block text-[11px] mb-0.5">Account Status</span>
+                    <span className="font-bold text-emerald-400">{lookupResult.accountStatus || 'ACTIVE'}</span>
+                  </div>
+                </div>
+
+                {/* Role Selection Form */}
+                <form onSubmit={handleExecuteRoleCorrection} className="pt-4 border-t border-[#0682F4]/20 space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-[#CCD2D9] mb-1.5">
+                      Select New Legitimate Role *
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      {(['CUSTOMER', 'AFFILIATE', 'SELLER', 'EXPERT'] as const).map((r) => (
+                        <button
+                          key={r}
+                          type="button"
+                          onClick={() => setCorrectionRole(r)}
+                          className={`py-2 px-3 rounded-xl text-xs font-bold border transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                            correctionRole === r
+                              ? 'bg-[#0682F4] border-[#08E6F9] text-white shadow-lg shadow-[#0682F4]/25'
+                              : 'bg-[#011B33] border-[#0682F4]/30 text-[#CCD2D9] hover:text-white'
+                          }`}
+                        >
+                          {r}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-[#CCD2D9] mb-1">
+                      Administrative Audit Reason *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Approved specialist application correction, verified expert portfolio onboarding..."
+                      value={correctionReason}
+                      onChange={(e) => setCorrectionReason(e.target.value)}
+                      className="w-full px-3.5 py-2 rounded-xl bg-[#011B33] border border-[#0682F4]/30 text-white text-xs placeholder-[#CCD2D9]/40 focus:outline-none focus:border-[#08E6F9]"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="checkbox"
+                      id="confirmCorrection"
+                      checked={correctionConfirmed}
+                      onChange={(e) => setCorrectionConfirmed(e.target.checked)}
+                      className="w-4 h-4 rounded text-[#0682F4] focus:ring-0 bg-[#011B33] border-[#0682F4]/40 cursor-pointer"
+                    />
+                    <label htmlFor="confirmCorrection" className="text-xs text-[#CCD2D9] cursor-pointer">
+                      I confirm this role change is verified and authorized for UID <span className="font-mono text-white">{lookupResult.userId}</span>.
+                    </label>
+                  </div>
+
+                  <div className="pt-2 flex justify-end">
+                    <button
+                      type="submit"
+                      disabled={submittingCorrection || !correctionConfirmed || !correctionReason.trim()}
+                      className="px-5 py-2.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition flex items-center gap-2 cursor-pointer disabled:opacity-50 shadow-lg shadow-emerald-600/20"
+                    >
+                      {submittingCorrection ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          Applying Role Correction...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-3.5 h-3.5" />
+                          Execute Role Correction
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Account Status Modal */}
       {selectedUserForStatus && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">

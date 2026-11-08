@@ -582,6 +582,8 @@ export class DigitalProductService {
     if (db) {
       try {
         await setDoc(doc(db, 'digitalProducts', productId), sanitizeFirestoreData(product)).catch(() => null);
+        await antiResurrectionService.removeTombstone('digital_product', productId).catch(() => null);
+        await antiResurrectionService.removeTombstone('product', productId).catch(() => null);
       } catch {
         // Preserved in memory cache
       }

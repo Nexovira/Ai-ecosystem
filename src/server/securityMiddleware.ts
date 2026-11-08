@@ -92,7 +92,7 @@ export function rateLimitMiddleware(limiter: InMemoryRateLimiter) {
     const clientKey =
       (req.headers['x-user-id'] as string) ||
       (req.headers['x-forwarded-for'] as string)?.split(',')[0].trim() ||
-      req.socket.remoteAddress ||
+      req.socket?.remoteAddress ||
       'anonymous';
 
     const check = limiter.check(`${req.path}_${clientKey}`);

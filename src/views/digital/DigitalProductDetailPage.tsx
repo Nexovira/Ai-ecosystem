@@ -25,6 +25,9 @@ import {
   ExternalLink,
   Layers,
 } from 'lucide-react';
+import { safeApiFetch } from '../../lib/apiClient';
+import { db } from '../../lib/firebase';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 
 interface DigitalProductDetailPageProps {
   slug: string;
@@ -66,13 +69,52 @@ export const DigitalProductDetailPage: React.FC<DigitalProductDetailPageProps> =
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`/api/digital-products/${slug}`);
-        const data = await res.json();
-        if (!res.ok || !data.success || !data.product) {
-          throw new Error(data.error || 'Digital publication not found');
+        const data = await safeApiFetch(`/api/digital-products/${encodeURIComponent(slug)}`);
+        const dataAny = data as any;
+        if (data && data.success && dataAny.product) {
+          setProduct(dataAny.product);
+          return;
         }
-        setProduct(data.product);
+
+        // Direct Firestore fallback by slug or ID
+        if (db) {
+          const snap = await getDocs(collection(db, 'digitalProducts')).catch(() => null);
+          if (snap && !snap.empty) {
+            let found: DigitalProduct | null = null;
+            snap.forEach((d) => {
+              const p = d.data() as DigitalProduct;
+              if (p.slug === slug || p.productId === slug || d.id === slug) {
+                found = p;
+              }
+            });
+            if (found) {
+              setProduct(found);
+              return;
+            }
+          }
+        }
+
+        throw new Error(data?.error || 'Digital publication not found');
       } catch (err: unknown) {
+        // Final attempt directly from Firestore
+        if (db) {
+          try {
+            const snap = await getDocs(collection(db, 'digitalProducts'));
+            let found: DigitalProduct | null = null;
+            snap.forEach((d) => {
+              const p = d.data() as DigitalProduct;
+              if (p.slug === slug || p.productId === slug || d.id === slug) {
+                found = p;
+              }
+            });
+            if (found) {
+              setProduct(found);
+              return;
+            }
+          } catch {
+            // ignore
+          }
+        }
         const msg = err instanceof Error ? err.message : 'Failed to retrieve publication';
         setError(msg);
       } finally {

@@ -23,6 +23,9 @@ import {
   CheckCircle2,
   Sparkles,
 } from 'lucide-react';
+import { safeApiFetch } from '../../lib/apiClient';
+import { db } from '../../lib/firebase';
+import { collection, getDocs } from 'firebase/firestore';
 
 const TYPE_LABELS: Record<DigitalProductType, string> = {
   EBOOK: 'Ebook',
@@ -54,13 +57,38 @@ export const DigitalProductsDiscoveryPage: React.FC = () => {
   useEffect(() => {
     async function loadCategories() {
       try {
-        const res = await fetch('/api/digital-products/categories');
-        const data = await res.json();
-        if (data.success && Array.isArray(data.categories)) {
-          setCategories(data.categories);
+        const data = await safeApiFetch('/api/digital-products/categories');
+        const dataAny = data as any;
+        if (data && data.success && Array.isArray(dataAny.categories) && dataAny.categories.length > 0) {
+          setCategories(dataAny.categories);
+          return;
+        }
+
+        // Direct Firestore fallback
+        if (db) {
+          const snap = await getDocs(collection(db, 'digitalProductCategories')).catch(() => null);
+          if (snap && !snap.empty) {
+            const list: DigitalProductCategory[] = [];
+            snap.forEach((d) => list.push(d.data() as DigitalProductCategory));
+            list.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
+            setCategories(list);
+          }
         }
       } catch (err) {
         console.warn('Failed to load digital categories:', err);
+        if (db) {
+          try {
+            const snap = await getDocs(collection(db, 'digitalProductCategories'));
+            if (!snap.empty) {
+              const list: DigitalProductCategory[] = [];
+              snap.forEach((d) => list.push(d.data() as DigitalProductCategory));
+              list.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
+              setCategories(list);
+            }
+          } catch {
+            // ignore
+          }
+        }
       }
     }
     loadCategories();
@@ -81,15 +109,57 @@ export const DigitalProductsDiscoveryPage: React.FC = () => {
         params.set('page', page.toString());
         params.set('limit', '9');
 
-        const res = await fetch(`/api/digital-products?${params.toString()}`);
-        const data = await res.json();
-        if (data.success) {
-          setProducts(data.products || []);
-          setTotalPages(data.totalPages || 1);
-          setTotalCount(data.total || 0);
+        const data = await safeApiFetch(`/api/digital-products?${params.toString()}`);
+        const dataAny = data as any;
+        if (data && data.success && Array.isArray(dataAny.products) && dataAny.products.length > 0) {
+          setProducts(dataAny.products || []);
+          setTotalPages(dataAny.totalPages || 1);
+          setTotalCount(dataAny.total || 0);
+          return;
         }
+
+        // Direct Firestore fallback
+        if (db) {
+          const snap = await getDocs(collection(db, 'digitalProducts')).catch(() => null);
+          if (snap && !snap.empty) {
+            const list: DigitalProduct[] = [];
+            snap.forEach((d) => {
+              const p = d.data() as DigitalProduct;
+              if (p.status === 'PUBLISHED' && p.visibility === 'PUBLIC') {
+                list.push(p);
+              }
+            });
+            setProducts(list);
+            setTotalPages(1);
+            setTotalCount(list.length);
+            return;
+          }
+        }
+
+        setProducts([]);
+        setTotalPages(1);
+        setTotalCount(0);
       } catch (err) {
         console.error('Failed to load digital products:', err);
+        if (db) {
+          try {
+            const snap = await getDocs(collection(db, 'digitalProducts'));
+            if (!snap.empty) {
+              const list: DigitalProduct[] = [];
+              snap.forEach((d) => {
+                const p = d.data() as DigitalProduct;
+                if (p.status === 'PUBLISHED' && p.visibility === 'PUBLIC') {
+                  list.push(p);
+                }
+              });
+              setProducts(list);
+              setTotalPages(1);
+              setTotalCount(list.length);
+            }
+          } catch {
+            // ignore
+          }
+        }
       } finally {
         setLoading(false);
       }

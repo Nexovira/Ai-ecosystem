@@ -126,23 +126,48 @@ export const ServicesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return headers;
   }, [user, profile]);
 
-  // Fetch Categories
+  // Fetch Categories with dual-layer API + authoritative Firestore fallback
   const fetchCategories = useCallback(async () => {
     try {
       setLoadingCategories(true);
-      const res = await fetch('/api/services/categories?includeInactive=true');
-      const data = await res.json();
-      if (data.success && Array.isArray(data.categories)) {
-        setCategories(data.categories);
+      const res = await safeApiFetch('/api/services/categories?includeInactive=true');
+      const resAny = res as any;
+      if (res && res.success && Array.isArray(resAny.categories) && resAny.categories.length > 0) {
+        setCategories(resAny.categories);
+        return;
       }
-    } catch {
-      // Safe catch
+
+      // Direct Firestore authoritative query fallback
+      if (db) {
+        const snap = await getDocs(collection(db, 'serviceCategories')).catch(() => null);
+        if (snap && !snap.empty) {
+          const list: ServiceCategory[] = [];
+          snap.forEach((d) => list.push(d.data() as ServiceCategory));
+          list.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
+          setCategories(list);
+        }
+      }
+    } catch (err) {
+      console.warn('Categories fetch notice:', err);
+      if (db) {
+        try {
+          const snap = await getDocs(collection(db, 'serviceCategories'));
+          if (!snap.empty) {
+            const list: ServiceCategory[] = [];
+            snap.forEach((d) => list.push(d.data() as ServiceCategory));
+            list.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
+            setCategories(list);
+          }
+        } catch {
+          // ignore
+        }
+      }
     } finally {
       setLoadingCategories(false);
     }
   }, []);
 
-  // Fetch Public Experts
+  // Fetch Public Experts with dual-layer API + authoritative Firestore fallback
   const fetchExperts = useCallback(async (filters?: {
     categorySlug?: string;
     skill?: string;
@@ -157,14 +182,86 @@ export const ServicesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (filters?.search) params.append('search', filters.search);
       if (filters?.availability) params.append('availability', filters.availability);
 
-      const res = await fetch(`/api/services/experts?${params.toString()}`);
-      const data = await res.json();
-      if (data.success && Array.isArray(data.experts)) {
-        setExperts(data.experts);
-        return data.experts;
+      const res = await safeApiFetch(`/api/services/experts?${params.toString()}`);
+      const resAny = res as any;
+      if (res && res.success && Array.isArray(resAny.experts) && resAny.experts.length > 0) {
+        setExperts(resAny.experts);
+        return resAny.experts;
+      }
+
+      // Direct Firestore authoritative query fallback
+      if (db) {
+        const snap = await getDocs(collection(db, 'experts')).catch(() => null);
+        if (snap && !snap.empty) {
+          const list: PublicExpert[] = [];
+          snap.forEach((d) => {
+            const exp = d.data() as ExpertProfile;
+            if (exp.profileVisibility === 'PUBLIC' && exp.verificationStatus === 'VERIFIED') {
+              list.push({
+                expertId: exp.expertId || d.id,
+                fullName: exp.fullName,
+                professionalTitle: exp.professionalTitle,
+                bio: exp.bio,
+                skills: exp.skills || [],
+                serviceCategories: exp.serviceCategories || [],
+                availabilityStatus: exp.availabilityStatus,
+                profileVisibility: exp.profileVisibility,
+                verificationStatus: exp.verificationStatus,
+                rating: exp.rating || 5,
+                yearsOfExperience: typeof exp.yearsOfExperience === 'number' ? exp.yearsOfExperience : 5,
+                completedProjectsCount: exp.completedProjectsCount || 0,
+                location: exp.location,
+                languages: exp.languages || ['English'],
+                portfolioLinks: exp.portfolioLinks || [],
+                profileImage: exp.profileImage || '',
+                createdAt: typeof exp.createdAt === 'string' ? exp.createdAt : new Date().toISOString(),
+                updatedAt: typeof exp.updatedAt === 'string' ? exp.updatedAt : new Date().toISOString(),
+              });
+            }
+          });
+          setExperts(list);
+          return list;
+        }
       }
     } catch (e) {
       console.warn('Error fetching experts:', e);
+      if (db) {
+        try {
+          const snap = await getDocs(collection(db, 'experts'));
+          if (!snap.empty) {
+            const list: PublicExpert[] = [];
+            snap.forEach((d) => {
+              const exp = d.data() as ExpertProfile;
+              if (exp.profileVisibility === 'PUBLIC' && exp.verificationStatus === 'VERIFIED') {
+                list.push({
+                  expertId: exp.expertId || d.id,
+                  fullName: exp.fullName,
+                  professionalTitle: exp.professionalTitle,
+                  bio: exp.bio,
+                  skills: exp.skills || [],
+                  serviceCategories: exp.serviceCategories || [],
+                  availabilityStatus: exp.availabilityStatus,
+                  profileVisibility: exp.profileVisibility,
+                  verificationStatus: exp.verificationStatus,
+                  rating: exp.rating || 5,
+                  yearsOfExperience: typeof exp.yearsOfExperience === 'number' ? exp.yearsOfExperience : 5,
+                  completedProjectsCount: exp.completedProjectsCount || 0,
+                  location: exp.location,
+                  languages: exp.languages || ['English'],
+                  portfolioLinks: exp.portfolioLinks || [],
+                  profileImage: exp.profileImage || '',
+                  createdAt: typeof exp.createdAt === 'string' ? exp.createdAt : new Date().toISOString(),
+                  updatedAt: typeof exp.updatedAt === 'string' ? exp.updatedAt : new Date().toISOString(),
+                });
+              }
+            });
+            setExperts(list);
+            return list;
+          }
+        } catch {
+          // ignore
+        }
+      }
     } finally {
       setLoadingExperts(false);
     }

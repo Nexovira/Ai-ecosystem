@@ -335,6 +335,7 @@ export class AcademyService {
     };
 
     this.courses.set(courseId, newCourse);
+    antiResurrectionService.removeTombstone('course', courseId).catch(() => null);
     setDoc(doc(db, 'courses', courseId), sanitizeFirestoreData(newCourse)).catch((err) => {
       console.warn('Firestore course write notice:', err);
     });

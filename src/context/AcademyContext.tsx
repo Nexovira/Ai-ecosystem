@@ -9,6 +9,9 @@ import {
   ScholarshipApplicationStatus,
   AcademyNotificationEvent,
 } from '../types/academy';
+import { safeApiFetch } from '../lib/apiClient';
+import { db } from '../lib/firebase';
+import { collection, getDocs } from 'firebase/firestore';
 
 interface AcademyContextType {
   courses: Course[];
@@ -121,15 +124,41 @@ export const AcademyProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const fetchCategories = useCallback(async (includeInactive = false): Promise<CourseCategory[]> => {
     try {
-      const res = await fetch(`/api/academy/categories?includeInactive=${includeInactive}`);
-      const data = await res.json();
-      if (data.success && Array.isArray(data.categories)) {
-        setCategories(data.categories);
-        return data.categories;
+      const res = await safeApiFetch(`/api/academy/categories?includeInactive=${includeInactive}`);
+      const resAny = res as any;
+      if (res && res.success && Array.isArray(resAny.categories) && resAny.categories.length > 0) {
+        setCategories(resAny.categories);
+        return resAny.categories;
+      }
+
+      // Direct Firestore fallback
+      if (db) {
+        const snap = await getDocs(collection(db, 'courseCategories')).catch(() => null);
+        if (snap && !snap.empty) {
+          const list: CourseCategory[] = [];
+          snap.forEach((d) => list.push(d.data() as CourseCategory));
+          list.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
+          setCategories(list);
+          return list;
+        }
       }
       return [];
     } catch (err) {
       console.error('Failed to fetch academy categories:', err);
+      if (db) {
+        try {
+          const snap = await getDocs(collection(db, 'courseCategories'));
+          if (!snap.empty) {
+            const list: CourseCategory[] = [];
+            snap.forEach((d) => list.push(d.data() as CourseCategory));
+            list.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
+            setCategories(list);
+            return list;
+          }
+        } catch {
+          // ignore
+        }
+      }
       return [];
     }
   }, []);
@@ -145,18 +174,57 @@ export const AcademyProvider: React.FC<{ children: React.ReactNode }> = ({ child
         if (filters?.search) params.set('search', filters.search);
         if (filters?.includeAll && isManagement) params.set('includeAll', 'true');
 
-        const res = await fetch(`/api/academy/courses?${params.toString()}`, {
+        const res = await safeApiFetch(`/api/academy/courses?${params.toString()}`, {
           headers: getAuthHeaders(),
         });
-        const data = await res.json();
-        if (data.success && Array.isArray(data.courses)) {
-          setCourses(data.courses);
-          return data.courses;
-        } else {
-          throw new Error(data.error || 'Failed to retrieve courses');
+        const resAny = res as any;
+        if (res && res.success && Array.isArray(resAny.courses) && resAny.courses.length > 0) {
+          setCourses(resAny.courses);
+          return resAny.courses;
         }
+
+        // Direct Firestore fallback
+        if (db) {
+          const snap = await getDocs(collection(db, 'courses')).catch(() => null);
+          if (snap && !snap.empty) {
+            const list: Course[] = [];
+            snap.forEach((d) => {
+              const c = d.data() as Course;
+              if (c.status === 'PUBLISHED' || isManagement) {
+                list.push(c);
+              }
+            });
+            setCourses(list);
+            return list;
+          }
+        }
+
+        if (res && res.error) {
+          throw new Error(res.error);
+        }
+        setCourses([]);
+        return [];
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Network error';
+        console.warn('Courses fetch notice:', msg);
+        if (db) {
+          try {
+            const snap = await getDocs(collection(db, 'courses'));
+            if (!snap.empty) {
+              const list: Course[] = [];
+              snap.forEach((d) => {
+                const c = d.data() as Course;
+                if (c.status === 'PUBLISHED' || isManagement) {
+                  list.push(c);
+                }
+              });
+              setCourses(list);
+              return list;
+            }
+          } catch {
+            // ignore
+          }
+        }
         setError(msg);
         return [];
       } finally {
