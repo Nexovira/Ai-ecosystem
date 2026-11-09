@@ -38,8 +38,8 @@ import {
 
 dotenv.config();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __filename = typeof import.meta?.url === 'string' ? fileURLToPath(import.meta.url) : '';
+const __dirname = __filename ? path.dirname(__filename) : process.cwd();
 
 interface CustomRequest extends Request {
   rawBody?: Buffer;
@@ -101,7 +101,7 @@ export async function createApp(): Promise<express.Express> {
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
     res.setHeader(
       'Access-Control-Allow-Headers',
-      'Content-Type, Authorization, x-user-id, x-user-role, x-user-email, x-csrf-token, cache-control, pragma'
+      'Content-Type, Authorization, x-user-id, x-user-role, x-user-name, x-user-email, x-csrf-token, cache-control, pragma'
     );
     res.setHeader('Access-Control-Max-Age', '86400');
 

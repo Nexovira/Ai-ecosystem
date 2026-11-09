@@ -65,14 +65,16 @@ export const WalletOverviewPage: React.FC = () => {
         { headers: getHeaders() }
       );
 
-      if (res.success && res.summary) {
-        const loadedWallets = res.summary.wallets || [];
+      const body = (res as any);
+      const summary = body.summary || body.data?.summary;
+      if (res.success && summary) {
+        const loadedWallets: Wallet[] = summary.wallets || [];
         setWallets(loadedWallets);
         if (loadedWallets.length > 0) {
           setSelectedWallet(loadedWallets[0]);
         }
-        setRecentEntries(res.summary.recentTransactions || []);
-        setRecentPayouts(res.summary.recentPayouts || []);
+        setRecentEntries(summary.recentTransactions || []);
+        setRecentPayouts(summary.recentPayouts || []);
         return;
       }
 
@@ -91,8 +93,9 @@ export const WalletOverviewPage: React.FC = () => {
               id: `w_${user.uid}_ngn`,
               walletId: `w_${user.uid}_ngn`,
               ownerId: user.uid,
-              ownerRole: profile?.role || 'CUSTOMER',
-              walletType: (profile?.role === 'AFFILIATE' ? 'AFFILIATE_EARNINGS' : 'MAIN_BALANCE') as WalletType,
+              ownerType: profile?.role === 'AFFILIATE' ? 'AFFILIATE' : 'USER',
+              ownerName: profile?.fullName || user.email || 'Nexovira Member',
+              walletType: profile?.role === 'AFFILIATE' ? 'AFFILIATE_EARNINGS' : ('MAIN_BALANCE' as any),
               currency: 'NGN',
               availableBalance: 0,
               pendingBalance: 0,

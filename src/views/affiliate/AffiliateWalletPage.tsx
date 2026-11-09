@@ -17,6 +17,9 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { CommissionRecord, PayoutRequest } from '../../types/affiliate';
+import { safeApiFetch } from '../../lib/apiClient';
+import { db } from '../../lib/firebase';
+import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 
 export const AffiliateWalletPage: React.FC = () => {
   const { navigate } = useRouter();
@@ -48,30 +51,67 @@ export const AffiliateWalletPage: React.FC = () => {
     if (!user) return;
     try {
       setLedgerLoading(true);
+
+      // Layer 1: Safe API fetch
       const [walletRes, payoutsRes] = await Promise.all([
-        fetch(`/api/affiliates/me/wallet?userId=${encodeURIComponent(user.uid)}`, {
-          headers: {
-            'x-user-id': user.uid,
-            'x-user-email': user.email || '',
-          },
-        }),
-        fetch(`/api/affiliates/me/payouts?userId=${encodeURIComponent(user.uid)}`, {
-          headers: {
-            'x-user-id': user.uid,
-            'x-user-email': user.email || '',
-          },
-        }),
+        safeApiFetch<{ commissions: CommissionRecord[] }>(
+          `/api/affiliates/me/wallet?userId=${encodeURIComponent(user.uid)}`,
+          {
+            headers: {
+              'x-user-id': user.uid,
+              'x-user-email': user.email || '',
+            },
+          }
+        ),
+        safeApiFetch<{ payouts: PayoutRequest[] }>(
+          `/api/affiliates/me/payouts?userId=${encodeURIComponent(user.uid)}`,
+          {
+            headers: {
+              'x-user-id': user.uid,
+              'x-user-email': user.email || '',
+            },
+          }
+        ),
       ]);
 
-      if (walletRes.ok) {
-        const wData = await walletRes.json();
-        setCommissions(wData.commissions || []);
+      const wBody = (walletRes as any);
+      const pBody = (payoutsRes as any);
+      let loadedCommissions: CommissionRecord[] = (wBody.commissions || wBody.data?.commissions || []);
+      let loadedPayouts: PayoutRequest[] = (pBody.payouts || pBody.data?.payouts || []);
+
+      // Layer 2: Dual-Layer Direct Firestore Fallback if empty or failed
+      if (db && (loadedCommissions.length === 0 || loadedPayouts.length === 0)) {
+        try {
+          if (profile?.affiliateId && loadedCommissions.length === 0) {
+            const commSnap = await getDocs(
+              query(collection(db, 'affiliateCommissions'), where('affiliateId', '==', profile.affiliateId), limit(50))
+            ).catch(() => null);
+            if (commSnap && !commSnap.empty) {
+              const list: CommissionRecord[] = [];
+              commSnap.forEach((d) => list.push(d.data() as CommissionRecord));
+              list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+              loadedCommissions = list;
+            }
+          }
+
+          if (profile?.affiliateId && loadedPayouts.length === 0) {
+            const paySnap = await getDocs(
+              query(collection(db, 'affiliatePayouts'), where('affiliateId', '==', profile.affiliateId), limit(50))
+            ).catch(() => null);
+            if (paySnap && !paySnap.empty) {
+              const pList: PayoutRequest[] = [];
+              paySnap.forEach((d) => pList.push(d.data() as PayoutRequest));
+              pList.sort((a, b) => new Date(b.requestedDate).getTime() - new Date(a.requestedDate).getTime());
+              loadedPayouts = pList;
+            }
+          }
+        } catch (fsErr) {
+          console.warn('Direct Firestore affiliate ledger fallback notice:', fsErr);
+        }
       }
 
-      if (payoutsRes.ok) {
-        const pData = await payoutsRes.json();
-        setPayouts(pData.payouts || []);
-      }
+      setCommissions(loadedCommissions);
+      setPayouts(loadedPayouts);
     } catch (err) {
       console.warn('Error fetching ledger details:', err);
     } finally {

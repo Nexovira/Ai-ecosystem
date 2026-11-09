@@ -56,10 +56,12 @@ export const WalletTransactionsPage: React.FC = () => {
         `/api/wallets?userId=${encodeURIComponent(user.uid)}`,
         { headers: getHeaders() }
       );
-      if (res.success && res.wallets && res.wallets.length > 0) {
-        setWallets(res.wallets);
+      const body = (res as any);
+      const loadedWallets: Wallet[] = body.wallets || body.data?.wallets;
+      if (res.success && loadedWallets && loadedWallets.length > 0) {
+        setWallets(loadedWallets);
         if (!selectedWallet) {
-          setSelectedWallet(res.wallets[0]);
+          setSelectedWallet(loadedWallets[0]);
         }
         return;
       }
@@ -74,8 +76,9 @@ export const WalletTransactionsPage: React.FC = () => {
             id: `w_${user.uid}_ngn`,
             walletId: `w_${user.uid}_ngn`,
             ownerId: user.uid,
-            ownerRole: profile?.role || 'CUSTOMER',
-            walletType: (profile?.role === 'AFFILIATE' ? 'AFFILIATE_EARNINGS' : 'MAIN_BALANCE') as WalletType,
+            ownerType: profile?.role === 'AFFILIATE' ? 'AFFILIATE' : 'USER',
+            ownerName: profile?.fullName || user.email || 'Nexovira Member',
+            walletType: profile?.role === 'AFFILIATE' ? 'AFFILIATE_EARNINGS' : ('MAIN_BALANCE' as any),
             currency: 'NGN',
             availableBalance: 0,
             pendingBalance: 0,
@@ -114,8 +117,10 @@ export const WalletTransactionsPage: React.FC = () => {
         { headers: getHeaders() }
       );
 
-      if (res.success && res.entries) {
-        let list: LedgerEntry[] = res.entries || [];
+      const tBody = (res as any);
+      const resEntries = tBody.entries || tBody.data?.entries;
+      if (res.success && resEntries) {
+        let list: LedgerEntry[] = resEntries || [];
 
         // Client-side search filter for description / transaction ID
         if (search.trim()) {
@@ -129,7 +134,7 @@ export const WalletTransactionsPage: React.FC = () => {
         }
 
         setEntries(list);
-        setTotal(res.total || list.length);
+        setTotal(tBody.total || tBody.data?.total || list.length);
         return;
       }
 
