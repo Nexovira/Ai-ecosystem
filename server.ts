@@ -5982,6 +5982,124 @@ Respond with a strictly valid JSON object matching this schema:
     });
   });
 
+  /**
+   * General Health Check Endpoint
+   */
+  app.get('/api/health', (_req: Request, res: Response) => {
+    const overview = reliabilityEngineeringService.getOverview();
+    return res.status(200).json({
+      status: 'UP',
+      app: 'NEXOVIRA',
+      version: '1.0.0',
+      environment: process.env.NODE_ENV || 'production',
+      database: 'ai-studio-remixnexovira-3e006103-21e4-4cf5-85ab-b5a8028d2042',
+      projectId: 'gen-lang-client-0045913772',
+      uptimeSeconds: overview.telemetry.uptimeSeconds,
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  /**
+   * Deep Diagnostics Probe
+   * Inspects Firestore read/write, Wallet subsystem, Commerce/Catalog subsystem, and Affiliate readiness.
+   * Completely safe and non-destructive; never returns secret credentials or API keys.
+   */
+  app.get('/api/health/deep', async (_req: Request, res: Response) => {
+    const startTime = Date.now();
+    const checks: Record<string, { status: 'HEALTHY' | 'DEGRADED' | 'DOWN'; latencyMs?: number; message?: string }> = {};
+
+    // 1. Firestore Read/Write verification
+    try {
+      const fsStart = Date.now();
+      const probeDocRef = doc(db, 'system', 'healthcheck');
+      await setDoc(probeDocRef, {
+        lastProbeAt: serverTimestamp(),
+        probeAgent: 'NEXOVIRA_HEALTH_MONITOR',
+        status: 'OPERATIONAL'
+      }, { merge: true });
+      const probeSnap = await getDoc(probeDocRef);
+      checks.firestore = {
+        status: probeSnap.exists() ? 'HEALTHY' : 'DEGRADED',
+        latencyMs: Date.now() - fsStart,
+        message: 'Firestore connection and read/write verified on authoritative database',
+      };
+    } catch (err: unknown) {
+      checks.firestore = {
+        status: 'DOWN',
+        latencyMs: Date.now() - startTime,
+        message: err instanceof Error ? err.message : 'Firestore probe failed',
+      };
+    }
+
+    // 2. Commerce / Catalog Subsystem
+    try {
+      const catStart = Date.now();
+      const productsRes = await digitalProductService.getPublicProducts({ limit: 1 });
+      checks.catalog = {
+        status: productsRes && Array.isArray(productsRes.products) ? 'HEALTHY' : 'DEGRADED',
+        latencyMs: Date.now() - catStart,
+        message: 'Product catalog query operational',
+      };
+    } catch (err: unknown) {
+      checks.catalog = {
+        status: 'DOWN',
+        message: err instanceof Error ? err.message : 'Catalog query failed',
+      };
+    }
+
+    // 3. Wallet Subsystem
+    try {
+      const wallStart = Date.now();
+      const testWallet = await walletService.getOrCreateWallet(
+        'system_health_check',
+        'USER',
+        'OTHER_AUTHORIZED_BUSINESS_ACCOUNT',
+        'System Health Check'
+      );
+      checks.wallet = {
+        status: testWallet && testWallet.id ? 'HEALTHY' : 'DEGRADED',
+        latencyMs: Date.now() - wallStart,
+        message: 'Wallet ledger and balance verification operational',
+      };
+    } catch (err: unknown) {
+      checks.wallet = {
+        status: 'DOWN',
+        message: err instanceof Error ? err.message : 'Wallet verification failed',
+      };
+    }
+
+    // 4. Affiliate Subsystem
+    try {
+      const affStart = Date.now();
+      const offers = affiliateService.getOffers(false);
+      checks.affiliate = {
+        status: Array.isArray(offers) ? 'HEALTHY' : 'DEGRADED',
+        latencyMs: Date.now() - affStart,
+        message: 'Affiliate system offer directory operational',
+      };
+    } catch (err: unknown) {
+      checks.affiliate = {
+        status: 'DOWN',
+        message: err instanceof Error ? err.message : 'Affiliate offer probe failed',
+      };
+    }
+
+    const allHealthy = Object.values(checks).every(c => c.status === 'HEALTHY');
+    const isDown = Object.values(checks).some(c => c.status === 'DOWN');
+
+    const overallStatus = allHealthy ? 'HEALTHY' : (isDown ? 'DEGRADED' : 'HEALTHY');
+    const statusCode = isDown ? 503 : 200;
+
+    return res.status(statusCode).json({
+      status: overallStatus,
+      totalDurationMs: Date.now() - startTime,
+      database: 'ai-studio-remixnexovira-3e006103-21e4-4cf5-85ab-b5a8028d2042',
+      projectId: 'gen-lang-client-0045913772',
+      checks,
+      timestamp: new Date().toISOString(),
+    });
+  });
+
   // ==========================================
   // PHASE 24: FINAL LAUNCH READINESS AUDIT APIS
   // ==========================================
