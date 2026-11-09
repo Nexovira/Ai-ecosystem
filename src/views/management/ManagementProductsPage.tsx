@@ -22,7 +22,7 @@ import {
   Info,
 } from 'lucide-react';
 import { useRouter } from '../../context/RouterContext';
-import { doc, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, deleteDoc, setDoc, serverTimestamp, getDocs, collection } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { Product, Category } from '../../types/marketplace';
 import { useMarketplace } from '../../context/MarketplaceContext';
@@ -148,9 +148,21 @@ export const ManagementProductsPage: React.FC = () => {
         }
       );
 
-      if (res.data?.success && Array.isArray(res.data.products)) {
-        setProducts(res.data.products);
-        setTotal(res.data.total ?? res.data.products.length);
+      const body = (res as any);
+      const prods: Product[] = body.products || body.data?.products;
+      if (res.success && Array.isArray(prods)) {
+        setProducts(prods);
+        setTotal(body.total ?? body.data?.total ?? prods.length);
+        return;
+      }
+
+      // Direct Firestore fallback
+      if (db) {
+        const snap = await getDocs(collection(db, 'products'));
+        const list: Product[] = [];
+        snap.forEach((d) => list.push(d.data() as Product));
+        setProducts(list);
+        setTotal(list.length);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Notice fetching products';

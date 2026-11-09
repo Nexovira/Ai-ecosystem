@@ -24,6 +24,7 @@ import {
 } from '../types/affiliate';
 import { notificationService } from './notificationService';
 import { walletService } from './walletService';
+import { sanitizeFirestoreData } from '../utils/productNormalization';
 
 class AffiliateService {
   private applications: Map<string, AffiliateApplication> = new Map();
@@ -214,7 +215,7 @@ class AffiliateService {
 
     if (db) {
       try {
-        await setDoc(doc(db, 'affiliateApplications', applicationId), application);
+        await setDoc(doc(db, 'affiliateApplications', applicationId), sanitizeFirestoreData(application));
       } catch (err) {
         console.warn('Firestore setDoc affiliateApplications notice:', err);
       }
@@ -311,18 +312,38 @@ class AffiliateService {
 
       if (db) {
         try {
-          await setDoc(doc(db, 'affiliateProfiles', affId), profile);
+          await setDoc(doc(db, 'affiliateProfiles', affId), sanitizeFirestoreData(profile));
+
           // Also mark user record in Firestore as having affiliate role and capability
-          await setDoc(
-            doc(db, 'users', application.userId),
-            {
-              role: 'AFFILIATE',
-              pendingRole: null,
-              roleApplicationId: application.applicationId,
-              updatedAt: new Date().toISOString(),
-            },
-            { merge: true }
-          ).catch(() => null);
+          const existingUserDoc = await getDoc(doc(db, 'users', application.userId)).catch(() => null);
+          if (existingUserDoc && existingUserDoc.exists()) {
+            await setDoc(
+              doc(db, 'users', application.userId),
+              sanitizeFirestoreData({
+                role: 'AFFILIATE',
+                pendingRole: null,
+                roleApplicationId: application.applicationId,
+                updatedAt: new Date().toISOString(),
+              }),
+              { merge: true }
+            );
+          } else {
+            await setDoc(
+              doc(db, 'users', application.userId),
+              sanitizeFirestoreData({
+                userId: application.userId,
+                fullName: application.fullName,
+                email: application.email,
+                role: 'AFFILIATE',
+                pendingRole: null,
+                roleApplicationId: application.applicationId,
+                accountStatus: 'ACTIVE',
+                emailVerified: true,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              })
+            );
+          }
         } catch (err) {
           console.warn('Firestore affiliateProfiles write notice:', err);
         }
@@ -331,13 +352,16 @@ class AffiliateService {
 
     if (db) {
       try {
-        await updateDoc(doc(db, 'affiliateApplications', application.applicationId), {
-          status: application.status,
-          reviewedBy: application.reviewedBy,
-          reviewedDate: application.reviewedDate,
-          reviewNotes: application.reviewNotes,
-          updatedAt: application.updatedAt,
-        });
+        await updateDoc(
+          doc(db, 'affiliateApplications', application.applicationId),
+          sanitizeFirestoreData({
+            status: application.status,
+            reviewedBy: application.reviewedBy,
+            reviewedDate: application.reviewedDate,
+            reviewNotes: application.reviewNotes || null,
+            updatedAt: application.updatedAt,
+          })
+        );
       } catch (err) {
         console.warn('Firestore affiliateApplications update notice:', err);
       }

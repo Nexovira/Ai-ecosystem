@@ -6010,8 +6010,8 @@ Respond with a strictly valid JSON object matching this schema:
   const isServerless = process.env.VERCEL === '1' || Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME);
   const isProd = process.env.NODE_ENV === 'production' || isServerless;
 
-  // Global unhandled API route fallback: ALWAYS return JSON
-  app.all(['/api', '/api/*', '/affiliates/*', '/checkout/*', '/management/*'], (_req: Request, res: Response) => {
+  // Global unhandled API route fallback: ALWAYS return JSON for API calls
+  app.all(['/api', '/api/*'], (_req: Request, res: Response) => {
     res.status(404).json({ success: false, error: 'API endpoint not found', status: 404 });
   });
 
