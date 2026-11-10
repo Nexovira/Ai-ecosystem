@@ -503,7 +503,12 @@ export async function createApp(): Promise<express.Express> {
       const customerEmail = (req.headers['x-user-email'] as string) || req.body.contactEmail;
 
       if (!customerId) {
-        return res.status(401).json({ success: false, error: 'Please sign in to submit a project request.' });
+        return res.status(401).json({
+          success: false,
+          message: 'Please sign in to submit a project request.',
+          error: 'Please sign in to submit a project request.',
+          code: 'UNAUTHENTICATED',
+        });
       }
 
       const result = await servicesService.createProjectRequest(
@@ -513,15 +518,34 @@ export async function createApp(): Promise<express.Express> {
         req.body
       );
 
-      if (!result.success) {
-        return res.status(400).json(result);
+      if (!result.success || !result.request) {
+        return res.status(400).json({
+          success: false,
+          message: result.error || 'Failed to submit project request.',
+          error: result.error || 'Failed to submit project request.',
+          code: 'TECH_PROJECT_SUBMISSION_FAILED',
+        });
       }
 
-      return res.json(result);
+      return res.status(201).json({
+        success: true,
+        message: 'Tech Project submitted successfully.',
+        code: 'TECH_PROJECT_SUBMISSION_SUCCESS',
+        data: {
+          submissionId: result.request.requestId,
+          request: result.request,
+        },
+        request: result.request,
+      });
     } catch (err: unknown) {
       console.error('Error creating project request:', err);
       const msg = err instanceof Error ? err.message : 'Failed to submit project request';
-      return res.status(500).json({ success: false, error: msg });
+      return res.status(500).json({
+        success: false,
+        message: msg,
+        error: msg,
+        code: 'TECH_PROJECT_SUBMISSION_FAILED',
+      });
     }
   });
 

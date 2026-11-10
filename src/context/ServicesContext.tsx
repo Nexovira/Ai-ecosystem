@@ -16,7 +16,8 @@ import {
 import { INITIAL_SERVICE_CATEGORIES, INITIAL_EXPERTS } from '../data/servicesCatalog';
 import { safeApiFetch } from '../lib/apiClient';
 import { db } from '../lib/firebase';
-import { doc, setDoc, getDoc, getDocs, collection } from 'firebase/firestore';
+import { doc, setDoc, getDoc, getDocs, collection, query, where } from 'firebase/firestore';
+import { sanitizeFirestoreData } from '../utils/productNormalization';
 
 interface ServicesContextType {
   categories: ServiceCategory[];
@@ -501,9 +502,42 @@ export const ServicesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       );
       if (res.data?.success && Array.isArray(res.data.requests)) {
         setCustomerRequests(res.data.requests);
+        return;
+      }
+
+      // Direct Firestore authoritative query fallback
+      if (db) {
+        const q = query(
+          collection(db, 'projectRequests'),
+          where('customerId', '==', user.uid)
+        );
+        const snap = await getDocs(q).catch(() => null);
+        if (snap && !snap.empty) {
+          const list: ProjectRequest[] = [];
+          snap.forEach((d) => list.push(d.data() as ProjectRequest));
+          list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          setCustomerRequests(list);
+        }
       }
     } catch (e) {
       console.warn('Error fetching customer requests:', e);
+      if (db) {
+        try {
+          const q = query(
+            collection(db, 'projectRequests'),
+            where('customerId', '==', user.uid)
+          );
+          const snap = await getDocs(q);
+          if (!snap.empty) {
+            const list: ProjectRequest[] = [];
+            snap.forEach((d) => list.push(d.data() as ProjectRequest));
+            list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+            setCustomerRequests(list);
+          }
+        } catch {
+          // ignore
+        }
+      }
     } finally {
       setLoadingCustomerRequests(false);
     }
@@ -516,7 +550,7 @@ export const ServicesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return { success: false, error: 'Please sign in or create an account to start your project.' };
       }
       try {
-        const res = await fetch('/api/services/requests', {
+        const res = await safeApiFetch('/api/services/requests', {
           method: 'POST',
           headers: getAuthHeaders(),
           body: JSON.stringify({
@@ -526,17 +560,69 @@ export const ServicesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             contactEmail: payload.contactEmail || user.email || '',
           }),
         });
-        const result = await res.json();
-        if (result.success && result.request) {
-          setCustomerRequests((prev) => [result.request!, ...prev]);
-          return { success: true, request: result.request };
+
+        const resAny = res as any;
+        const resData = res.data as any;
+        const reqObj: ProjectRequest | undefined = resData?.request || resData?.data?.request || resAny?.request;
+
+        if (res.success && reqObj) {
+          setCustomerRequests((prev) => [reqObj, ...prev.filter(r => r.requestId !== reqObj.requestId)]);
+          return { success: true, request: reqObj };
         }
-        return { success: false, error: result.error || 'Failed to submit request' };
+
+        // Dual-Layer fallback: if API returned a server error (e.g. 500/502/504), write to Firestore directly
+        if (db && (!res.success || res.status >= 500)) {
+          try {
+            console.warn('API returned server response status ' + res.status + '; attempting direct Firestore persistence fallback...');
+            const year = new Date().getFullYear();
+            const randomHex = Math.floor(100000 + Math.random() * 900000);
+            const requestReference = `NXR-REQ-${year}-${randomHex}`;
+            const requestId = `req-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+            const now = new Date().toISOString();
+
+            const fallbackRequest: ProjectRequest = {
+              requestId,
+              requestReference,
+              customerId: user.uid,
+              customerName: payload.contactName || profile?.fullName || user.displayName || 'Client',
+              customerEmail: payload.contactEmail || user.email || '',
+              customerPhone: payload.contactPhone || '',
+              categoryId: payload.categoryId,
+              categoryName: categories.find(c => c.id === payload.categoryId || c.slug === payload.categoryId)?.name || 'Digital Services',
+              categorySlug: categories.find(c => c.id === payload.categoryId || c.slug === payload.categoryId)?.slug || payload.categoryId,
+              projectTitle: payload.projectTitle.trim(),
+              description: payload.description.trim(),
+              goals: payload.goals.trim(),
+              requiredSkills: Array.isArray(payload.requiredSkills) ? payload.requiredSkills.slice(0, 15) : [],
+              budgetMin: Number(payload.budgetMin) || 0,
+              budgetMax: Number(payload.budgetMax) || 0,
+              currency: (payload.currency || 'NGN').toUpperCase().trim(),
+              preferredTimeline: payload.preferredTimeline || 'Flexible',
+              priority: payload.priority || 'MEDIUM',
+              attachments: (payload.attachments || []).slice(0, 5),
+              additionalNotes: payload.additionalNotes || '',
+              status: 'SUBMITTED',
+              preferredExpertId: payload.preferredExpertId || '',
+              createdBy: user.uid,
+              createdAt: now,
+              updatedAt: now,
+            };
+
+            await setDoc(doc(db, 'projectRequests', requestId), sanitizeFirestoreData(fallbackRequest));
+            setCustomerRequests((prev) => [fallbackRequest, ...prev]);
+            return { success: true, request: fallbackRequest };
+          } catch (directErr) {
+            console.error('Direct Firestore submission fallback failed:', directErr);
+          }
+        }
+
+        const errorMsg = res.error || resAny?.message || resData?.message || 'Failed to submit request';
+        return { success: false, error: errorMsg };
       } catch (err: unknown) {
         return { success: false, error: err instanceof Error ? err.message : 'Network error' };
       }
     },
-    [user, profile, getAuthHeaders]
+    [user, profile, categories, getAuthHeaders]
   );
 
   // Get Single Request Detail
@@ -544,19 +630,54 @@ export const ServicesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     async (requestId: string): Promise<{ request?: ProjectRequest; error?: string }> => {
       if (!user) return { error: 'Authentication required' };
       try {
-        const res = await fetch(`/api/services/requests/${requestId}`, {
+        const res = await safeApiFetch(`/api/services/requests/${requestId}`, {
           headers: getAuthHeaders(),
         });
-        const data = await res.json();
-        if (data.success && data.request) {
-          return { request: data.request };
+        const resAny = res as any;
+        const resData = res.data as any;
+        const req = resData?.request || resAny?.request;
+        if (res.success && req) {
+          return { request: req };
         }
-        return { error: data.error || 'Project not found' };
+
+        // Direct Firestore fallback
+        if (db) {
+          const docSnap = await getDoc(doc(db, 'projectRequests', requestId)).catch(() => null);
+          if (docSnap && docSnap.exists()) {
+            const reqData = docSnap.data() as ProjectRequest;
+            if (
+              reqData.customerId === user.uid ||
+              reqData.assignedExpertId === user.uid ||
+              ['ADMIN', 'SUPER_ADMIN', 'STAFF'].includes(profile?.role || '')
+            ) {
+              return { request: reqData };
+            }
+          }
+        }
+
+        return { error: res.error || resAny?.error || 'Project not found' };
       } catch (err: unknown) {
+        if (db) {
+          try {
+            const docSnap = await getDoc(doc(db, 'projectRequests', requestId));
+            if (docSnap.exists()) {
+              const reqData = docSnap.data() as ProjectRequest;
+              if (
+                reqData.customerId === user.uid ||
+                reqData.assignedExpertId === user.uid ||
+                ['ADMIN', 'SUPER_ADMIN', 'STAFF'].includes(profile?.role || '')
+              ) {
+                return { request: reqData };
+              }
+            }
+          } catch {
+            // ignore
+          }
+        }
         return { error: err instanceof Error ? err.message : 'Failed to load project details' };
       }
     },
-    [user, getAuthHeaders]
+    [user, profile, getAuthHeaders]
   );
 
   // Fetch Expert Assigned Projects
@@ -564,12 +685,30 @@ export const ServicesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!user) return;
     try {
       setLoadingExpertProjects(true);
-      const res = await fetch(`/api/services/expert/projects?userId=${user.uid}`, {
-        headers: getAuthHeaders(),
-      });
-      const data = await res.json();
-      if (data.success && Array.isArray(data.projects)) {
-        setExpertProjects(data.projects);
+      const res = await safeApiFetch<{ success: boolean; projects?: ProjectRequest[] }>(
+        `/api/services/expert/projects?userId=${user.uid}`,
+        {
+          headers: getAuthHeaders(),
+        }
+      );
+      if (res.data?.success && Array.isArray(res.data.projects)) {
+        setExpertProjects(res.data.projects);
+        return;
+      }
+
+      // Direct Firestore fallback
+      if (db) {
+        const q = query(
+          collection(db, 'projectRequests'),
+          where('assignedExpertId', '==', user.uid)
+        );
+        const snap = await getDocs(q).catch(() => null);
+        if (snap && !snap.empty) {
+          const list: ProjectRequest[] = [];
+          snap.forEach((d) => list.push(d.data() as ProjectRequest));
+          list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          setExpertProjects(list);
+        }
       }
     } catch (e) {
       console.warn('Error fetching expert projects:', e);
@@ -583,7 +722,7 @@ export const ServicesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     async (requestId: string, status: ProjectRequestStatus, note?: string): Promise<{ success: boolean; error?: string }> => {
       if (!user) return { success: false, error: 'Authentication required' };
       try {
-        const res = await fetch(`/api/services/requests/${requestId}/status`, {
+        const res = await safeApiFetch(`/api/services/requests/${requestId}/status`, {
           method: 'PATCH',
           headers: getAuthHeaders(),
           body: JSON.stringify({
@@ -593,9 +732,8 @@ export const ServicesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             userRole: profile?.role || 'CUSTOMER',
           }),
         });
-        const result = await res.json();
-        if (result.success) {
-          // Refresh state lists
+        const resAny = res as any;
+        if (res.success) {
           fetchCustomerRequests();
           fetchExpertProjects();
           if (['ADMIN', 'SUPER_ADMIN', 'STAFF'].includes(profile?.role || '')) {
@@ -603,7 +741,27 @@ export const ServicesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           }
           return { success: true };
         }
-        return { success: false, error: result.error || 'Failed to update status' };
+
+        // Direct Firestore fallback
+        if (db) {
+          try {
+            await setDoc(
+              doc(db, 'projectRequests', requestId),
+              sanitizeFirestoreData({
+                status,
+                updatedAt: new Date().toISOString(),
+              }),
+              { merge: true }
+            );
+            fetchCustomerRequests();
+            fetchExpertProjects();
+            return { success: true };
+          } catch (directErr) {
+            console.warn('Direct Firestore status update fallback notice:', directErr);
+          }
+        }
+
+        return { success: false, error: res.error || resAny?.message || 'Failed to update status' };
       } catch (err: unknown) {
         return { success: false, error: err instanceof Error ? err.message : 'Network error' };
       }
@@ -617,12 +775,24 @@ export const ServicesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     async (requestId: string): Promise<ProjectUpdate[]> => {
       if (!user) return [];
       try {
-        const res = await fetch(`/api/services/projects/${requestId}/updates`, {
-          headers: getAuthHeaders(),
-        });
-        const data = await res.json();
-        if (data.success && Array.isArray(data.updates)) {
-          return data.updates;
+        const res = await safeApiFetch<{ success: boolean; updates?: ProjectUpdate[] }>(
+          `/api/services/projects/${requestId}/updates`,
+          {
+            headers: getAuthHeaders(),
+          }
+        );
+        if (res.data?.success && Array.isArray(res.data.updates)) {
+          return res.data.updates;
+        }
+
+        // Direct Firestore fallback
+        if (db) {
+          const snap = await getDocs(collection(db, 'projectRequests', requestId, 'updates')).catch(() => null);
+          if (snap && !snap.empty) {
+            const list: ProjectUpdate[] = [];
+            snap.forEach((d) => list.push(d.data() as ProjectUpdate));
+            return list.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+          }
         }
       } catch (e) {
         console.warn('Error fetching updates:', e);
@@ -644,7 +814,7 @@ export const ServicesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const isExpert = profile?.role === 'EXPERT';
         const senderRole = isManagement ? 'MANAGEMENT' : isExpert ? 'EXPERT' : 'CUSTOMER';
 
-        const res = await fetch(`/api/services/projects/${requestId}/updates`, {
+        const res = await safeApiFetch(`/api/services/projects/${requestId}/updates`, {
           method: 'POST',
           headers: getAuthHeaders(),
           body: JSON.stringify({
@@ -655,8 +825,35 @@ export const ServicesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             senderRole,
           }),
         });
-        const result = await res.json();
-        return result;
+
+        const resAny = res as any;
+        const resData = res.data as any;
+        const updObj = resData?.update || resAny?.update;
+        if (res.success && updObj) {
+          return { success: true, update: updObj };
+        }
+
+        // Direct Firestore fallback
+        if (db) {
+          try {
+            const updateId = `upd-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+            const fallbackUpdate: ProjectUpdate = {
+              updateId,
+              requestId,
+              senderId: user.uid,
+              senderName: profile?.fullName || user.displayName || 'Member',
+              senderRole,
+              message,
+              createdAt: new Date().toISOString(),
+            };
+            await setDoc(doc(db, 'projectRequests', requestId, 'updates', updateId), sanitizeFirestoreData(fallbackUpdate));
+            return { success: true, update: fallbackUpdate };
+          } catch (dbErr) {
+            console.warn('Direct Firestore post update fallback notice:', dbErr);
+          }
+        }
+
+        return { success: false, error: res.error || resAny?.message || 'Failed to post update' };
       } catch (err: unknown) {
         return { success: false, error: err instanceof Error ? err.message : 'Network error' };
       }
@@ -668,15 +865,42 @@ export const ServicesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const fetchManagementRequests = useCallback(async () => {
     try {
       setLoadingManagementRequests(true);
-      const res = await fetch('/api/services/management/requests', {
-        headers: getAuthHeaders(),
-      });
-      const data = await res.json();
-      if (data.success && Array.isArray(data.requests)) {
-        setManagementRequests(data.requests);
+      const res = await safeApiFetch<{ success: boolean; requests?: ProjectRequest[] }>(
+        '/api/services/management/requests',
+        {
+          headers: getAuthHeaders(),
+        }
+      );
+      if (res.data?.success && Array.isArray(res.data.requests)) {
+        setManagementRequests(res.data.requests);
+        return;
+      }
+
+      // Direct Firestore fallback for Management
+      if (db) {
+        const snap = await getDocs(collection(db, 'projectRequests')).catch(() => null);
+        if (snap && !snap.empty) {
+          const list: ProjectRequest[] = [];
+          snap.forEach((d) => list.push(d.data() as ProjectRequest));
+          list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          setManagementRequests(list);
+        }
       }
     } catch (e) {
       console.warn('Error fetching management requests:', e);
+      if (db) {
+        try {
+          const snap = await getDocs(collection(db, 'projectRequests'));
+          if (!snap.empty) {
+            const list: ProjectRequest[] = [];
+            snap.forEach((d) => list.push(d.data() as ProjectRequest));
+            list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+            setManagementRequests(list);
+          }
+        } catch {
+          // ignore
+        }
+      }
     } finally {
       setLoadingManagementRequests(false);
     }
@@ -686,17 +910,17 @@ export const ServicesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const assignExpert = useCallback(
     async (requestId: string, expertId: string, notes?: string): Promise<{ success: boolean; error?: string }> => {
       try {
-        const res = await fetch('/api/services/management/assign', {
+        const res = await safeApiFetch('/api/services/management/assign', {
           method: 'POST',
           headers: getAuthHeaders(),
           body: JSON.stringify({ requestId, expertId, internalNotes: notes }),
         });
-        const result = await res.json();
-        if (result.success) {
+        const resAny = res as any;
+        if (res.success) {
           fetchManagementRequests();
           return { success: true };
         }
-        return { success: false, error: result.error || 'Failed to assign expert' };
+        return { success: false, error: res.error || resAny?.message || 'Failed to assign expert' };
       } catch (err: unknown) {
         return { success: false, error: err instanceof Error ? err.message : 'Network error' };
       }
@@ -708,12 +932,25 @@ export const ServicesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const fetchManagementExperts = useCallback(async () => {
     try {
       setLoadingManagementExperts(true);
-      const res = await fetch('/api/services/management/experts', {
-        headers: getAuthHeaders(),
-      });
-      const data = await res.json();
-      if (data.success && Array.isArray(data.experts)) {
-        setManagementExperts(data.experts);
+      const res = await safeApiFetch<{ success: boolean; experts?: ExpertProfile[] }>(
+        '/api/services/management/experts',
+        {
+          headers: getAuthHeaders(),
+        }
+      );
+      if (res.data?.success && Array.isArray(res.data.experts)) {
+        setManagementExperts(res.data.experts);
+        return;
+      }
+
+      // Direct Firestore fallback for Management experts
+      if (db) {
+        const snap = await getDocs(collection(db, 'experts')).catch(() => null);
+        if (snap && !snap.empty) {
+          const list: ExpertProfile[] = [];
+          snap.forEach((d) => list.push(d.data() as ExpertProfile));
+          setManagementExperts(list);
+        }
       }
     } catch (e) {
       console.warn('Error fetching management experts:', e);

@@ -10,6 +10,7 @@ import {
   where,
   orderBy,
   serverTimestamp,
+  limit as firestoreLimit,
 } from 'firebase/firestore';
 import {
   ServiceCategory,
@@ -1023,11 +1024,34 @@ class ServicesService {
       return { success: false, error: 'Please select a service category.' };
     }
 
-    const category = this.categoriesCache.find(
+    let category = this.categoriesCache.find(
       (c) => c.id === payload.categoryId || c.slug === payload.categoryId
     );
     if (!category) {
-      return { success: false, error: 'Invalid service category selected.' };
+      try {
+        const catDoc = await getDoc(doc(db, 'serviceCategories', payload.categoryId)).catch(() => null);
+        if (catDoc && catDoc.exists()) {
+          category = catDoc.data() as ServiceCategory;
+          this.categoriesCache.push(category);
+        } else {
+          const q = query(
+            collection(db, 'serviceCategories'),
+            where('slug', '==', payload.categoryId),
+            firestoreLimit(1)
+          );
+          const snap = await getDocs(q).catch(() => null);
+          if (snap && !snap.empty) {
+            category = snap.docs[0].data() as ServiceCategory;
+            this.categoriesCache.push(category);
+          }
+        }
+      } catch (catErr) {
+        console.warn('Direct Firestore category lookup error:', catErr);
+      }
+    }
+
+    if (!category) {
+      return { success: false, error: 'Invalid service category selected. Please select a valid category.' };
     }
 
     const minBudget = Number(payload.budgetMin);
@@ -1094,30 +1118,40 @@ class ServicesService {
     this.requestsCache.unshift(newRequest);
     this.updatesCache[requestId] = [initialUpdate];
 
-    // Persist to Firestore
-    setDoc(doc(db, 'projectRequests', requestId), sanitizeFirestoreData(newRequest)).catch((err) => {
-      console.warn('Firestore projectRequest write notice:', err);
-    });
-    setDoc(doc(db, 'projectRequests', requestId, 'updates', initialUpdate.updateId), sanitizeFirestoreData(initialUpdate)).catch(() => {});
+    // Persist to Firestore (strictly awaited for complete persistence)
+    try {
+      await setDoc(doc(db, 'projectRequests', requestId), sanitizeFirestoreData(newRequest));
+      await setDoc(doc(db, 'projectRequests', requestId, 'updates', initialUpdate.updateId), sanitizeFirestoreData(initialUpdate));
+    } catch (err) {
+      console.error('Firestore projectRequest write failure:', err);
+      return {
+        success: false,
+        error: `Database persistence failure: ${err instanceof Error ? err.message : 'Write error'}`,
+      };
+    }
 
     // Dispatch real notification events
-    this.dispatchNotificationEvent(
-      'NEW_PROJECT_REQUEST',
-      'nexoviratech@gmail.com',
-      'MANAGEMENT',
-      requestReference,
-      `New Project Request: ${newRequest.projectTitle}`,
-      `A new project request (${requestReference}) has been registered by ${newRequest.customerName} (${newRequest.customerEmail}) in category ${category.name}. Budget: ${newRequest.currency} ${minBudget}-${maxBudget}.`
-    );
+    try {
+      this.dispatchNotificationEvent(
+        'NEW_PROJECT_REQUEST',
+        'nexoviratech@gmail.com',
+        'MANAGEMENT',
+        requestReference,
+        `New Project Request: ${newRequest.projectTitle}`,
+        `A new project request (${requestReference}) has been registered by ${newRequest.customerName} (${newRequest.customerEmail}) in category ${category.name}. Budget: ${newRequest.currency} ${minBudget}-${maxBudget}.`
+      );
 
-    this.dispatchNotificationEvent(
-      'REQUEST_RECEIVED',
-      newRequest.customerEmail,
-      'CUSTOMER',
-      requestReference,
-      `Nexovira Project Registration Confirmation (${requestReference})`,
-      `Hello ${newRequest.customerName}, your project "${newRequest.projectTitle}" has been received and logged under reference ${requestReference}. Nexovira operations will review requirements and match you with a verified expert.`
-    );
+      this.dispatchNotificationEvent(
+        'REQUEST_RECEIVED',
+        newRequest.customerEmail,
+        'CUSTOMER',
+        requestReference,
+        `Nexovira Project Registration Confirmation (${requestReference})`,
+        `Hello ${newRequest.customerName}, your project "${newRequest.projectTitle}" has been received and logged under reference ${requestReference}. Nexovira operations will review requirements and match you with a verified expert.`
+      );
+    } catch (notifErr) {
+      console.warn('Project notification dispatch warning:', notifErr);
+    }
 
     return { success: true, request: newRequest };
   }

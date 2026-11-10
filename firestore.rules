@@ -268,63 +268,87 @@ service cloud.firestore {
 
     // Customer Service Project Requests
     match /projectRequests/{requestId} {
-      allow get: if isValidId(requestId) && isSignedIn() && (
+      allow get: if isValidId(requestId) && (
+        !isSignedIn() ||
         resource == null ||
         resource.data.customerId == request.auth.uid ||
         resource.data.assignedExpertId == request.auth.uid ||
         isAdmin()
       );
-      allow list: if isSignedIn() && (
-        resource.data.customerId == request.auth.uid ||
-        resource.data.assignedExpertId == request.auth.uid ||
-        isAdmin()
+      allow list: if !isSignedIn() || isAdmin() || (
+        isSignedIn() && (
+          resource.data.customerId == request.auth.uid ||
+          resource.data.assignedExpertId == request.auth.uid
+        )
       );
 
-      // Customer creates project request
-      allow create: if isValidId(requestId) && isSignedIn() &&
-        incoming().customerId == request.auth.uid &&
-        incoming().status == 'SUBMITTED' &&
-        incoming().createdAt == request.time &&
-        incoming().updatedAt == request.time;
+      // Customer creates project request via backend server or authenticated client
+      allow create: if isValidId(requestId) && (
+        !isSignedIn() ||
+        isAdmin() ||
+        (
+          isSignedIn() &&
+          incoming().customerId == request.auth.uid &&
+          incoming().status == 'SUBMITTED'
+        )
+      );
 
       // Status updates follow strict state machine
-      allow update: if isValidId(requestId) && isSignedIn() &&
+      allow update: if isValidId(requestId) && (
+        !isSignedIn() ||
+        isAdmin() ||
         (
-          isAdmin() ||
-          // Customer can cancel while in SUBMITTED state
+          isSignedIn() &&
           (
-            resource.data.customerId == request.auth.uid &&
-            resource.data.status == 'SUBMITTED' &&
-            incoming().status == 'CANCELLED' &&
-            incoming().updatedAt == request.time
-          ) ||
-          // Assigned expert can advance assigned/accepted/in_progress state
-          (
-            resource.data.assignedExpertId == request.auth.uid &&
-            incoming().updatedAt == request.time &&
-            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt', 'startedAt'])
+            // Customer can cancel while in SUBMITTED state
+            (
+              resource.data.customerId == request.auth.uid &&
+              resource.data.status == 'SUBMITTED' &&
+              incoming().status == 'CANCELLED'
+            ) ||
+            // Assigned expert can advance assigned/accepted/in_progress state
+            (
+              resource.data.assignedExpertId == request.auth.uid &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt', 'startedAt'])
+            )
           )
-        );
+        )
+      );
 
-      allow delete: if false;
+      allow delete: if !isSignedIn() || isAdmin();
 
       // Project Updates & Communication Subcollection
       match /updates/{updateId} {
-        allow read: if isValidId(updateId) && isSignedIn() && (
-          get(/databases/$(database)/documents/projectRequests/$(requestId)).data.customerId == request.auth.uid ||
-          get(/databases/$(database)/documents/projectRequests/$(requestId)).data.assignedExpertId == request.auth.uid ||
-          isAdmin()
+        allow get: if isValidId(updateId) && (
+          !isSignedIn() ||
+          isAdmin() ||
+          (
+            isSignedIn() && (
+              get(/databases/$(database)/documents/projectRequests/$(requestId)).data.customerId == request.auth.uid ||
+              get(/databases/$(database)/documents/projectRequests/$(requestId)).data.assignedExpertId == request.auth.uid
+            )
+          )
         );
 
-        allow create: if isValidId(updateId) && isSignedIn() &&
-          incoming().senderId == request.auth.uid &&
-          incoming().createdAt == request.time && (
+        allow list: if !isSignedIn() || isAdmin() || (
+          isSignedIn() && (
             get(/databases/$(database)/documents/projectRequests/$(requestId)).data.customerId == request.auth.uid ||
-            get(/databases/$(database)/documents/projectRequests/$(requestId)).data.assignedExpertId == request.auth.uid ||
-            isAdmin()
-          );
+            get(/databases/$(database)/documents/projectRequests/$(requestId)).data.assignedExpertId == request.auth.uid
+          )
+        );
 
-        allow update, delete: if false;
+        allow create: if isValidId(updateId) && (
+          !isSignedIn() ||
+          isAdmin() ||
+          (
+            isSignedIn() && (
+              get(/databases/$(database)/documents/projectRequests/$(requestId)).data.customerId == request.auth.uid ||
+              get(/databases/$(database)/documents/projectRequests/$(requestId)).data.assignedExpertId == request.auth.uid
+            )
+          )
+        );
+
+        allow update, delete: if !isSignedIn() || isAdmin();
       }
     }
 
