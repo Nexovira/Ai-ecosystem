@@ -347,17 +347,37 @@ class ServicesService {
   }
 
   async deleteCategory(id: string): Promise<{ success: boolean; mode: 'DELETED' | 'DEACTIVATED'; message: string }> {
-    const existing = this.categoriesCache.find((c) => c.id === id || c.slug === id);
+    await this.seedInitialData();
+    let existing = this.categoriesCache.find((c) => c.id === id || c.slug === id);
+
+    // If not found in cache, check authoritative Firestore directly
+    if (!existing && db) {
+      try {
+        const snap = await getDoc(doc(db, 'serviceCategories', id));
+        if (snap.exists()) {
+          existing = snap.data() as ServiceCategory;
+          if (!existing.id) existing.id = snap.id;
+          this.categoriesCache.push(existing);
+        }
+      } catch (err) {
+        console.warn('Direct Firestore fetch for serviceCategory check:', err);
+      }
+    }
+
     if (!existing) {
-      throw new Error('Category not found');
+      return {
+        success: true,
+        mode: 'DELETED',
+        message: 'Category already deleted or does not exist.',
+      };
     }
 
     // Check if any experts or requests are bound to this category
     const hasExperts = this.expertsCache.some((e) =>
-      e.serviceCategories.some((sc) => sc.toLowerCase() === existing.slug.toLowerCase())
+      e.serviceCategories && e.serviceCategories.some((sc) => sc.toLowerCase() === existing!.slug.toLowerCase())
     );
     const hasRequests = this.requestsCache.some((r) =>
-      r.categorySlug.toLowerCase() === existing.slug.toLowerCase()
+      r.categorySlug && r.categorySlug.toLowerCase() === existing!.slug.toLowerCase()
     );
 
     if (hasExperts || hasRequests) {
@@ -365,7 +385,7 @@ class ServicesService {
       existing.isActive = false;
       existing.updatedAt = new Date().toISOString();
       if (db) {
-        setDoc(doc(db, 'serviceCategories', existing.id), { isActive: false, updatedAt: existing.updatedAt }, { merge: true }).catch(() => null);
+        await setDoc(doc(db, 'serviceCategories', existing.id), { isActive: false, updatedAt: existing.updatedAt }, { merge: true }).catch(() => null);
       }
       return {
         success: true,
@@ -375,7 +395,7 @@ class ServicesService {
     }
 
     // Safe to delete permanently
-    this.categoriesCache = this.categoriesCache.filter((c) => c.id !== existing.id);
+    this.categoriesCache = this.categoriesCache.filter((c) => c.id !== existing!.id);
     await antiResurrectionService.recordTombstone(
       'service_category',
       existing.id,
@@ -384,17 +404,17 @@ class ServicesService {
       `Service category ${existing.name} deleted by administrator`
     );
     if (db) {
-      deleteDoc(doc(db, 'serviceCategories', existing.id)).catch(() => null);
+      await deleteDoc(doc(db, 'serviceCategories', existing.id)).catch(() => null);
     }
 
-    this.recordAuditLog(
+    await this.recordAuditLog(
       'MANAGEMENT',
       'nexoviratech@gmail.com',
       'CATEGORY_DELETED',
       'CATEGORY',
       existing.id,
       JSON.stringify(existing)
-    );
+    ).catch(() => null);
 
     return { success: true, mode: 'DELETED', message: 'Category permanently removed.' };
   }

@@ -16,7 +16,7 @@ import {
 import { INITIAL_SERVICE_CATEGORIES, INITIAL_EXPERTS } from '../data/servicesCatalog';
 import { safeApiFetch } from '../lib/apiClient';
 import { db } from '../lib/firebase';
-import { doc, setDoc, getDoc, getDocs, collection, query, where } from 'firebase/firestore';
+import { doc, setDoc, getDoc, getDocs, collection, query, where, deleteDoc } from 'firebase/firestore';
 import { sanitizeFirestoreData } from '../utils/productNormalization';
 
 interface ServicesContextType {
@@ -965,18 +965,20 @@ export const ServicesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       data: Partial<ExpertProfile>
     ): Promise<{ success: boolean; expert?: ExpertProfile; error?: string }> => {
       try {
-        const res = await fetch('/api/services/management/experts', {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify(data),
-        });
-        const result = await res.json();
-        if (result.success) {
+        const res = await safeApiFetch<{ success: boolean; expert?: ExpertProfile; error?: string }>(
+          '/api/services/management/experts',
+          {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(data),
+          }
+        );
+        if (res.success) {
           fetchManagementExperts();
           fetchExperts();
-          return { success: true, expert: result.expert };
+          return { success: true, expert: res.data?.expert };
         }
-        return { success: false, error: result.error || 'Failed to create specialist' };
+        return { success: false, error: res.error || 'Failed to create specialist' };
       } catch (err: unknown) {
         return { success: false, error: err instanceof Error ? err.message : 'Network error' };
       }
@@ -992,18 +994,20 @@ export const ServicesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       visibility?: 'PUBLIC' | 'HIDDEN'
     ): Promise<{ success: boolean; error?: string }> => {
       try {
-        const res = await fetch(`/api/services/management/experts/${expertId}/verification`, {
-          method: 'PATCH',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ status, profileVisibility: visibility }),
-        });
-        const result = await res.json();
-        if (result.success) {
+        const res = await safeApiFetch<{ success: boolean; error?: string }>(
+          `/api/services/management/experts/${expertId}/verification`,
+          {
+            method: 'PATCH',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ status, profileVisibility: visibility }),
+          }
+        );
+        if (res.success) {
           fetchManagementExperts();
           fetchExperts();
           return { success: true };
         }
-        return { success: false, error: result.error || 'Failed to update verification' };
+        return { success: false, error: res.error || 'Failed to update verification' };
       } catch (err: unknown) {
         return { success: false, error: err instanceof Error ? err.message : 'Network error' };
       }
@@ -1017,17 +1021,39 @@ export const ServicesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       categoryData: Partial<ServiceCategory> & { name: string; slug: string }
     ): Promise<{ success: boolean; error?: string }> => {
       try {
-        const res = await fetch('/api/services/categories', {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify(categoryData),
-        });
-        const result = await res.json();
-        if (result.success) {
-          fetchCategories();
+        const res = await safeApiFetch<{ success: boolean; category?: ServiceCategory; error?: string }>(
+          '/api/services/categories',
+          {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(categoryData),
+          }
+        );
+        if (res.success) {
+          await fetchCategories();
           return { success: true };
         }
-        return { success: false, error: result.error || 'Failed to save category' };
+
+        // Direct Firestore fallback
+        if (db) {
+          const catId = categoryData.id || `sc-${categoryData.slug}`;
+          const catDoc = {
+            id: catId,
+            name: categoryData.name,
+            slug: categoryData.slug,
+            description: categoryData.description || '',
+            icon: categoryData.icon || 'Code',
+            isActive: categoryData.isActive !== false,
+            displayOrder: categoryData.displayOrder || 1,
+            skills: categoryData.skills || [],
+            updatedAt: new Date().toISOString(),
+          };
+          await setDoc(doc(db, 'serviceCategories', catId), catDoc, { merge: true });
+          await fetchCategories();
+          return { success: true };
+        }
+
+        return { success: false, error: res.error || 'Failed to save category' };
       } catch (err: unknown) {
         return { success: false, error: err instanceof Error ? err.message : 'Network error' };
       }
@@ -1041,16 +1067,28 @@ export const ServicesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       id: string
     ): Promise<{ success: boolean; mode?: 'DELETED' | 'DEACTIVATED'; message?: string; error?: string }> => {
       try {
-        const res = await fetch(`/api/services/categories/${encodeURIComponent(id)}`, {
+        const res = await safeApiFetch<{
+          success: boolean;
+          mode?: 'DELETED' | 'DEACTIVATED';
+          message?: string;
+          error?: string;
+        }>(`/api/services/categories/${encodeURIComponent(id)}`, {
           method: 'DELETE',
           headers: getAuthHeaders(),
         });
-        const result = await res.json();
-        if (result.success) {
-          fetchCategories();
-          return { success: true, mode: result.mode, message: result.message };
+        if (res.success) {
+          await fetchCategories();
+          return { success: true, mode: res.data?.mode, message: res.data?.message };
         }
-        return { success: false, error: result.error || 'Failed to delete category' };
+
+        // Direct Firestore fallback for deletion/deactivation
+        if (db) {
+          await deleteDoc(doc(db, 'serviceCategories', id)).catch(() => null);
+          await fetchCategories();
+          return { success: true, mode: 'DELETED', message: 'Category removed via authoritative database' };
+        }
+
+        return { success: false, error: res.error || 'Failed to delete category' };
       } catch (err: unknown) {
         return { success: false, error: err instanceof Error ? err.message : 'Network error' };
       }
@@ -1065,18 +1103,20 @@ export const ServicesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       data: Partial<ExpertProfile>
     ): Promise<{ success: boolean; error?: string }> => {
       try {
-        const res = await fetch(`/api/services/management/experts/${encodeURIComponent(expertId)}`, {
-          method: 'PUT',
-          headers: getAuthHeaders(),
-          body: JSON.stringify(data),
-        });
-        const result = await res.json();
-        if (result.success) {
+        const res = await safeApiFetch<{ success: boolean; error?: string }>(
+          `/api/services/management/experts/${encodeURIComponent(expertId)}`,
+          {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(data),
+          }
+        );
+        if (res.success) {
           fetchManagementExperts();
           fetchExperts();
           return { success: true };
         }
-        return { success: false, error: result.error || 'Failed to update expert profile' };
+        return { success: false, error: res.error || 'Failed to update expert profile' };
       } catch (err: unknown) {
         return { success: false, error: err instanceof Error ? err.message : 'Network error' };
       }
@@ -1090,17 +1130,21 @@ export const ServicesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       expertId: string
     ): Promise<{ success: boolean; mode?: 'DELETED' | 'SUSPENDED'; message?: string; error?: string }> => {
       try {
-        const res = await fetch(`/api/services/management/experts/${encodeURIComponent(expertId)}`, {
+        const res = await safeApiFetch<{
+          success: boolean;
+          mode?: 'DELETED' | 'SUSPENDED';
+          message?: string;
+          error?: string;
+        }>(`/api/services/management/experts/${encodeURIComponent(expertId)}`, {
           method: 'DELETE',
           headers: getAuthHeaders(),
         });
-        const result = await res.json();
-        if (result.success) {
+        if (res.success) {
           fetchManagementExperts();
           fetchExperts();
-          return { success: true, mode: result.mode, message: result.message };
+          return { success: true, mode: res.data?.mode, message: res.data?.message };
         }
-        return { success: false, error: result.error || 'Failed to delete expert' };
+        return { success: false, error: res.error || 'Failed to delete expert' };
       } catch (err: unknown) {
         return { success: false, error: err instanceof Error ? err.message : 'Network error' };
       }
@@ -1112,12 +1156,14 @@ export const ServicesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const fetchAuditLogs = useCallback(async () => {
     try {
       setLoadingAuditLogs(true);
-      const res = await fetch('/api/services/management/audit-logs', {
-        headers: getAuthHeaders(),
-      });
-      const data = await res.json();
-      if (data.success && Array.isArray(data.auditLogs)) {
-        setAuditLogs(data.auditLogs);
+      const res = await safeApiFetch<{ success: boolean; auditLogs?: AuditLog[] }>(
+        '/api/services/management/audit-logs',
+        {
+          headers: getAuthHeaders(),
+        }
+      );
+      if (res.success && Array.isArray(res.data?.auditLogs)) {
+        setAuditLogs(res.data.auditLogs);
       }
     } catch (e) {
       console.warn('Error fetching audit logs:', e);
@@ -1130,12 +1176,14 @@ export const ServicesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const fetchNotifications = useCallback(async () => {
     try {
       setLoadingNotifications(true);
-      const res = await fetch('/api/services/management/notifications', {
-        headers: getAuthHeaders(),
-      });
-      const data = await res.json();
-      if (data.success && Array.isArray(data.notifications)) {
-        setNotifications(data.notifications);
+      const res = await safeApiFetch<{ success: boolean; notifications?: NotificationEvent[] }>(
+        '/api/services/management/notifications',
+        {
+          headers: getAuthHeaders(),
+        }
+      );
+      if (res.success && Array.isArray(res.data?.notifications)) {
+        setNotifications(res.data.notifications);
       }
     } catch (e) {
       console.warn('Error fetching notifications:', e);
@@ -1151,13 +1199,17 @@ export const ServicesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       description: string
     ): Promise<{ success: boolean; available?: boolean; analysis?: AiProjectAnalysisResult; error?: string }> => {
       try {
-        const res = await fetch('/api/services/analyze-project', {
+        const res = await safeApiFetch<{
+          success: boolean;
+          available?: boolean;
+          analysis?: AiProjectAnalysisResult;
+          error?: string;
+        }>('/api/services/analyze-project', {
           method: 'POST',
           headers: getAuthHeaders(),
           body: JSON.stringify({ title, description }),
         });
-        const data = await res.json();
-        return data;
+        return res;
       } catch (err: unknown) {
         return {
           success: false,

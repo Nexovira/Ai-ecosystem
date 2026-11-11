@@ -355,23 +355,45 @@ export class DigitalProductService {
     if (!isAdmin) throw new Error('Forbidden: Admin clearance required.');
     await this.init();
 
-    const category = this.categoriesCache.get(categoryId);
-    if (!category) throw new Error('Category not found');
+    let category = this.categoriesCache.get(categoryId);
+    if (!category && db) {
+      try {
+        const snap = await getDoc(doc(db, 'digitalProductCategories', categoryId));
+        if (snap.exists()) {
+          category = snap.data() as DigitalProductCategory;
+          if (!category.id) category.id = snap.id;
+          this.categoriesCache.set(category.id, category);
+        }
+      } catch (err) {
+        console.warn('Direct Firestore fetch for digital category check:', err);
+      }
+    }
+
+    if (!category) {
+      return { success: true, mode: 'DELETED', message: 'Category not found or already removed.' };
+    }
 
     const hasProducts = Array.from(this.productsCache.values()).some(
-      (p) => p.category === categoryId || p.categorySlug === category.slug
+      (p) => p.category === categoryId || p.categorySlug === category!.slug
     );
     if (hasProducts) {
       category.isActive = false;
       if (db) {
-        setDoc(doc(db, 'digitalProductCategories', categoryId), { isActive: false }, { merge: true }).catch(() => null);
+        await setDoc(doc(db, 'digitalProductCategories', categoryId), { isActive: false }, { merge: true }).catch(() => null);
       }
       return { success: true, mode: 'DEACTIVATED', message: 'Category deactivated to preserve active publications.' };
     }
 
     this.categoriesCache.delete(categoryId);
+    await antiResurrectionService.recordTombstone(
+      'digital_category',
+      categoryId,
+      'admin',
+      'DELETED',
+      `Digital category ${category.name} deleted by administrator`
+    );
     if (db) {
-      deleteDoc(doc(db, 'digitalProductCategories', categoryId)).catch(() => null);
+      await deleteDoc(doc(db, 'digitalProductCategories', categoryId)).catch(() => null);
     }
     return { success: true, mode: 'DELETED', message: 'Category permanently removed.' };
   }
@@ -566,6 +588,8 @@ export class DigitalProductService {
       },
       storagePath: input.storagePath || `protected/digital-products/${productId}/${input.fileMetadata.fileName}`,
       externalFileUrl: input.externalFileUrl ? input.externalFileUrl.trim() : undefined,
+      externalReadingUrl: input.externalReadingUrl?.trim() || input.publuuUrl?.trim(),
+      publuuUrl: input.publuuUrl?.trim() || input.externalReadingUrl?.trim(),
       downloadLimit: input.downloadLimit !== undefined ? input.downloadLimit : -1,
       affiliateEligible: Boolean(input.affiliateEligible),
       commissionRate: input.commissionRate || 10,
@@ -612,7 +636,20 @@ export class DigitalProductService {
   ): Promise<DigitalProduct> {
     await this.init();
 
-    const product = this.productsCache.get(productId);
+    let product = this.productsCache.get(productId);
+    if (!product && db) {
+      try {
+        const snap = await getDoc(doc(db, 'digitalProducts', productId));
+        if (snap.exists()) {
+          product = snap.data() as DigitalProduct;
+          if (!product.productId) product.productId = snap.id;
+          this.productsCache.set(product.productId, product);
+        }
+      } catch (err) {
+        console.warn('Direct Firestore fetch for digital product update check:', err);
+      }
+    }
+
     if (!product) {
       throw new Error('Digital product not found.');
     }
@@ -629,6 +666,8 @@ export class DigitalProductService {
     if (input.description !== undefined) product.description = sanitizeText(input.description);
     if (input.coverImage !== undefined) product.coverImage = input.coverImage;
     if (input.productType !== undefined) product.productType = input.productType;
+    if (input.publuuUrl !== undefined) product.publuuUrl = input.publuuUrl.trim();
+    if (input.externalReadingUrl !== undefined) product.externalReadingUrl = input.externalReadingUrl.trim();
 
     if (input.price !== undefined) {
       product.price = Math.max(0, Math.round(Number(input.price) || 0));
@@ -715,9 +754,22 @@ export class DigitalProductService {
   ): Promise<{ success: boolean; mode: 'PERMANENT' | 'ARCHIVED'; reason?: string }> {
     await this.init();
 
-    const product = this.productsCache.get(productId);
+    let product = this.productsCache.get(productId);
+    if (!product && db) {
+      try {
+        const snap = await getDoc(doc(db, 'digitalProducts', productId));
+        if (snap.exists()) {
+          product = snap.data() as DigitalProduct;
+          if (!product.productId) product.productId = snap.id;
+          this.productsCache.set(product.productId, product);
+        }
+      } catch (err) {
+        console.warn('Direct Firestore fetch for digital product check:', err);
+      }
+    }
+
     if (!product) {
-      throw new Error('Digital product not found.');
+      return { success: true, mode: 'PERMANENT', reason: 'Digital product already removed or not found.' };
     }
 
     if (!isAdmin && product.creatorId !== creatorId && product.creatorId !== `seller-${creatorId}`) {
@@ -729,7 +781,7 @@ export class DigitalProductService {
     if (permanent && isAdmin && !hasEntitlements) {
       // Safe permanent deletion: 0 customer entitlements exist
       this.productsCache.delete(productId);
-      antiResurrectionService.recordTombstone(
+      await antiResurrectionService.recordTombstone(
         'digital_product',
         productId,
         creatorId,
@@ -737,7 +789,7 @@ export class DigitalProductService {
         'Digital product permanently removed by administrator'
       ).catch(() => null);
       if (db) {
-        deleteDoc(doc(db, 'digitalProducts', productId)).catch(() => null);
+        await deleteDoc(doc(db, 'digitalProducts', productId)).catch(() => null);
       }
       return { success: true, mode: 'PERMANENT' };
     }

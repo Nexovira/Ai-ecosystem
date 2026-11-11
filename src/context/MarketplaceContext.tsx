@@ -126,7 +126,7 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
         // Continue safely
       }
 
-      // 2. Fetch published products from Firestore authoritative source
+      // 2. Fetch published physical products from Firestore authoritative source
       const productsCol = collection(db, 'products');
       const prodSnap = await getDocs(query(productsCol, where('productStatus', '==', 'PUBLISHED')));
 
@@ -134,81 +134,61 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
       if (!prodSnap.empty) {
         prodSnap.forEach((d) => {
           const prod = d.data() as Product;
-          if (!tombstoneIds.has(prod.productId)) {
+          if (
+            !tombstoneIds.has(prod.productId) &&
+            !prod.isDigital &&
+            prod.category !== 'Digital Products & Ebooks' &&
+            prod.category !== 'digital-products-ebooks' &&
+            !prod.sku?.startsWith('DP-')
+          ) {
             loadedProducts.push(prod);
           }
         });
       }
 
-      // Also hydrate active digital products/ebooks into catalog
-      try {
-        const digSnap = await getDocs(collection(db, 'digitalProducts')).catch(() => null);
-        if (digSnap && !digSnap.empty) {
-          digSnap.forEach((d) => {
-            const dp = d.data();
-            if (dp.status === 'PUBLISHED' && dp.visibility === 'PUBLIC' && !tombstoneIds.has(dp.productId)) {
-              // Only add if not already in loadedProducts
-              if (!loadedProducts.some((p) => p.productId === dp.productId)) {
-                loadedProducts.push({
-                  productId: dp.productId,
-                  sellerId: dp.creatorId || 'nexovira-publishing',
-                  name: dp.title,
-                  slug: dp.slug,
-                  shortDescription: dp.shortDescription || '',
-                  fullDescription: dp.description || '',
-                  category: dp.categorySlug || dp.category || 'digital-products',
-                  brand: 'Nexovira Publishing',
-                  sku: `DP-${dp.productId}`,
-                  price: dp.price || 0,
-                  currency: dp.currency || 'NGN',
-                  stockQuantity: 9999,
-                  availabilityStatus: 'IN_STOCK',
-                  productStatus: 'PUBLISHED',
-                  isApproved: true,
-                  isDigital: true,
-                  publuuUrl: dp.publuuUrl || dp.externalReadingUrl,
-                  externalReadingUrl: dp.externalReadingUrl || dp.publuuUrl,
-                  productImages: [
-                    {
-                      id: `${dp.productId}-cover`,
-                      url: dp.coverImage || '',
-                      alt: dp.title,
-                      isPrimary: true,
-                      order: 0,
-                    },
-                  ],
-                  specifications: [
-                    { label: 'Format', value: 'Digital E-book / Flipbook' },
-                    { label: 'Delivery', value: 'Instant Access & Reading' },
-                  ],
-                  rating: dp.rating || 5,
-                  reviewCount: dp.reviewCount || 0,
-                  createdAt: typeof dp.createdAt === 'string' ? dp.createdAt : new Date().toISOString(),
-                  updatedAt: typeof dp.updatedAt === 'string' ? dp.updatedAt : new Date().toISOString(),
-                });
-              }
-            }
-          });
-        }
-      } catch (digErr) {
-        console.warn('Digital products sync notice:', digErr);
+      // If no published products exist yet in Firestore, load standard initial hardware catalog
+      if (loadedProducts.length === 0) {
+        INITIAL_PRODUCTS.forEach((p) => {
+          if (!tombstoneIds.has(p.productId)) {
+            loadedProducts.push(p);
+          }
+        });
       }
 
       setProducts(loadedProducts);
 
-      // 3. Categories from Firestore authoritative source
+      // 3. Categories from Firestore authoritative source (Physical Hardware Only)
       const catCol = collection(db, 'categories');
       const catSnap = await getDocs(catCol);
       const loadedCats: Category[] = [];
       if (!catSnap.empty) {
         catSnap.forEach((d) => {
           const cat = d.data() as Category;
-          if (!tombstoneIds.has(cat.categoryId) && !tombstoneIds.has(`product_category_${cat.categoryId}`)) {
+          const isDigitalCat =
+            cat.categoryId === 'digital-products-ebooks' ||
+            cat.slug === 'digital-products-ebooks' ||
+            cat.name?.toLowerCase().includes('ebook') ||
+            cat.name?.toLowerCase().includes('digital product');
+
+          if (
+            !tombstoneIds.has(cat.categoryId) &&
+            !tombstoneIds.has(`product_category_${cat.categoryId}`) &&
+            !isDigitalCat
+          ) {
             loadedCats.push(cat);
           }
         });
         loadedCats.sort((a, b) => (a.order || 0) - (b.order || 0));
       }
+
+      if (loadedCats.length === 0) {
+        INITIAL_CATEGORIES.forEach((c) => {
+          if (!tombstoneIds.has(c.categoryId) && !tombstoneIds.has(`product_category_${c.categoryId}`)) {
+            loadedCats.push(c);
+          }
+        });
+      }
+
       setCategories(loadedCats);
     } catch (err) {
       console.warn('Marketplace catalog fetch notice:', err);

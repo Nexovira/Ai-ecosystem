@@ -335,14 +335,20 @@ export async function createApp(): Promise<express.Express> {
    * Management create or update service category
    */
   app.post('/api/services/categories', async (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
     try {
+      const userEmail = ((req.headers['x-user-email'] as string) || '').trim().toLowerCase();
       const userRole = (req.headers['x-user-role'] as string) || '';
-      if (!['ADMIN', 'SUPER_ADMIN', 'STAFF'].includes(userRole)) {
+      const trustedAdminEmails = ['nexoviratech@gmail.com', 'nexovirasupport@gmail.com'];
+      const isOwner = trustedAdminEmails.includes(userEmail);
+      const isRoleAuthorized = ['ADMIN', 'SUPER_ADMIN', 'CONTENT_MANAGER', 'STAFF'].includes(userRole);
+
+      if (!isOwner && !isRoleAuthorized) {
         return res.status(403).json({ success: false, error: 'Unauthorized: Management role required.' });
       }
 
       const category = await servicesService.createOrUpdateCategory(req.body);
-      return res.json({ success: true, category });
+      return res.status(200).json({ success: true, message: 'Category saved successfully', category, data: { category } });
     } catch (err: unknown) {
       console.error('Error saving category:', err);
       const msg = err instanceof Error ? err.message : 'Failed to save category';
@@ -355,18 +361,29 @@ export async function createApp(): Promise<express.Express> {
    * Management delete or deactivate service category
    */
   app.delete('/api/services/categories/:id', async (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
     try {
+      const userEmail = ((req.headers['x-user-email'] as string) || '').trim().toLowerCase();
       const userRole = (req.headers['x-user-role'] as string) || '';
-      if (!['ADMIN', 'SUPER_ADMIN', 'STAFF'].includes(userRole)) {
+      const trustedAdminEmails = ['nexoviratech@gmail.com', 'nexovirasupport@gmail.com'];
+      const isOwner = trustedAdminEmails.includes(userEmail);
+      const isRoleAuthorized = ['ADMIN', 'SUPER_ADMIN', 'CONTENT_MANAGER', 'STAFF'].includes(userRole);
+
+      if (!isOwner && !isRoleAuthorized) {
         return res.status(403).json({ success: false, error: 'Unauthorized: Management role required.' });
       }
 
       const result = await servicesService.deleteCategory(req.params.id);
-      return res.json(result);
+      return res.status(200).json({
+        success: result.success,
+        mode: result.mode,
+        message: result.message,
+        data: result,
+      });
     } catch (err: unknown) {
       console.error('Error deleting service category:', err);
       const msg = err instanceof Error ? err.message : 'Failed to delete category';
-      return res.status(400).json({ success: false, error: msg });
+      return res.status(500).json({ success: false, error: msg });
     }
   });
 

@@ -153,6 +153,9 @@ export interface CreateDigitalProductInput {
   storagePath?: string;
   externalFileUrl?: string;
   visibility?: DigitalProductVisibility;
+  publuuUrl?: string;
+  externalReadingUrl?: string;
+  status?: DigitalProductStatus;
   downloadLimit?: number;
   affiliateEligible?: boolean;
   commissionRate?: number;
@@ -166,6 +169,8 @@ export interface UpdateDigitalProductInput {
   price?: number;
   productType?: DigitalProductType;
   coverImage?: string;
+  publuuUrl?: string;
+  externalReadingUrl?: string;
   previewInfo?: Partial<DigitalPreviewInfo>;
   fileMetadata?: Partial<DigitalFileMetadata>;
   storagePath?: string;

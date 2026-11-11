@@ -3,6 +3,7 @@ import { useRouter } from '../../context/RouterContext';
 import { useAuth } from '../../context/AuthContext';
 import { DigitalEntitlement } from '../../types/digitalProduct';
 import { ReviewFormModal } from '../../components/reviews/ReviewFormModal';
+import { safeApiFetch } from '../../lib/apiClient';
 import {
   Download,
   BookOpen,
@@ -40,14 +41,16 @@ export const CustomerDigitalLibraryPage: React.FC = () => {
       }
       setLoading(true);
       try {
-        const res = await fetch('/api/account/digital-library', {
-          headers: {
-            'x-user-id': user.uid,
-          },
-        });
-        const data = await res.json();
-        if (data.success && Array.isArray(data.entitlements)) {
-          setEntitlements(data.entitlements);
+        const res = await safeApiFetch<{ success: boolean; entitlements: DigitalEntitlement[] }>(
+          '/api/account/digital-library',
+          {
+            headers: {
+              'x-user-id': user.uid,
+            },
+          }
+        );
+        if (res.success && Array.isArray(res.data?.entitlements)) {
+          setEntitlements(res.data.entitlements);
         }
       } catch (err) {
         console.error('Failed to load user digital library:', err);
@@ -64,21 +67,24 @@ export const CustomerDigitalLibraryPage: React.FC = () => {
     setFeedback(null);
     try {
       // 1. Request short-lived single-use download token
-      const res = await fetch(`/api/digital-products/${ent.productId}/download-token`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': user.uid,
-        },
-      });
+      const res = await safeApiFetch<{ success: boolean; downloadToken?: string; error?: string }>(
+        `/api/digital-products/${ent.productId}/download-token`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-id': user.uid,
+          },
+        }
+      );
 
-      const data = await res.json();
-      if (!res.ok || !data.success || !data.downloadToken) {
-        throw new Error(data.error || 'Failed to authorize download token');
+      const downloadToken = res.data?.downloadToken;
+      if (!res.success || !downloadToken) {
+        throw new Error(res.error || 'Failed to authorize download token');
       }
 
       // 2. Trigger browser download
-      const downloadUrl = `/api/digital-products/download/${data.downloadToken}`;
+      const downloadUrl = `/api/digital-products/download/${downloadToken}`;
       const link = document.createElement('a');
       link.href = downloadUrl;
       link.download = `${ent.productSlug || 'digital-publication'}.pdf`;
